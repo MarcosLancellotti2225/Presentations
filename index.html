@@ -3,29 +3,32 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PowerPoint Generator</title>
-<script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
+<title>Chart Generator</title>
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--surface3:#2e2e2e;--border:#333;--text:#e0e0e0;--text-dim:#888;--accent:#6366f1;--accent-hover:#818cf8;--danger:#ef4444;--success:#22c55e;--radius:8px}
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+:root{--bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a26;--surface3:#242436;--border:#2a2a3e;--text:#e0e0f0;--text-dim:#7878a0;--accent:#7c3aed;--accent2:#a78bfa;--accent-hover:#8b5cf6;--danger:#ef4444;--success:#22c55e;--warning:#f59e0b;--radius:10px;--shadow:0 4px 24px rgba(0,0,0,.4)}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex}
 ::-webkit-scrollbar{width:6px}
 ::-webkit-scrollbar-track{background:var(--surface)}
-::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
+::-webkit-scrollbar-thumb{background:#3a3a5e;border-radius:3px}
 button{cursor:pointer;font-family:inherit;border:none;outline:none;transition:all .2s}
-input,textarea,select{font-family:inherit;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:8px 12px;outline:none;transition:border-color .2s}
+input,textarea,select{font-family:inherit;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:10px 14px;outline:none;transition:border-color .2s;font-size:14px}
 input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+select{cursor:pointer}
 textarea{resize:vertical}
-label{font-size:13px;color:var(--text-dim);font-weight:500;display:block;margin-bottom:4px}
+label{font-size:12px;color:var(--text-dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px}
 
 /* Sidebar */
-.sidebar{width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0}
-.sidebar h1{font-size:16px;font-weight:700;padding:0 20px 20px;border-bottom:1px solid var(--border);color:#fff}
-.sidebar h1 span{color:var(--accent)}
-.tab-btn{display:flex;align-items:center;gap:10px;padding:12px 20px;background:none;color:var(--text-dim);font-size:14px;font-weight:500;text-align:left;width:100%;transition:all .2s;border-left:3px solid transparent}
+.sidebar{width:240px;min-width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sidebar-header{padding:20px 24px;border-bottom:1px solid var(--border)}
+.sidebar-header h1{font-size:18px;font-weight:800;color:#fff}
+.sidebar-header h1 span{background:linear-gradient(135deg,var(--accent),#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sidebar-header p{font-size:11px;color:var(--text-dim);margin-top:4px}
+.sidebar-nav{flex:1;padding:12px 0}
+.tab-btn{display:flex;align-items:center;gap:12px;padding:12px 24px;background:none;color:var(--text-dim);font-size:14px;font-weight:500;text-align:left;width:100%;transition:all .2s;border-left:3px solid transparent}
 .tab-btn:hover{background:var(--surface2);color:var(--text)}
 .tab-btn.active{color:#fff;background:var(--surface2);border-left-color:var(--accent)}
 .tab-btn .icon{font-size:18px;width:24px;text-align:center}
@@ -34,271 +37,329 @@ label{font-size:13px;color:var(--text-dim);font-weight:500;display:block;margin-
 .main{flex:1;overflow-y:auto;padding:32px 40px}
 .tab-content{display:none}
 .tab-content.active{display:block}
-.section-title{font-size:22px;font-weight:700;margin-bottom:24px;color:#fff}
+.section-title{font-size:24px;font-weight:800;margin-bottom:8px;color:#fff}
+.section-desc{font-size:14px;color:var(--text-dim);margin-bottom:28px}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
 .form-group{margin-bottom:16px}
 .form-group input,.form-group textarea,.form-group select{width:100%}
-.color-row{display:flex;gap:16px;margin-bottom:16px}
-.color-group{flex:1}
-.color-group input[type=color]{width:100%;height:40px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;padding:2px}
+
 .btn{padding:10px 20px;border-radius:var(--radius);font-size:14px;font-weight:600;transition:all .2s}
 .btn-primary{background:var(--accent);color:#fff}
-.btn-primary:hover{background:var(--accent-hover)}
+.btn-primary:hover{background:var(--accent-hover);transform:translateY(-1px);box-shadow:0 4px 16px rgba(124,58,237,.4)}
 .btn-secondary{background:var(--surface3);color:var(--text)}
-.btn-secondary:hover{background:#383838}
+.btn-secondary:hover{background:#2e2e48}
 .btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
 .btn-danger:hover{background:var(--danger);color:#fff}
 .btn-success{background:var(--success);color:#fff}
 .btn-success:hover{background:#16a34a}
-.btn-sm{padding:6px 12px;font-size:12px}
-.btn-icon{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:var(--surface3);color:var(--text-dim);font-size:14px}
-.btn-icon:hover{background:#383838;color:#fff}
+.btn-sm{padding:6px 14px;font-size:12px}
+.btn-icon{width:34px;height:34px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--surface3);color:var(--text-dim);font-size:14px}
+.btn-icon:hover{background:#2e2e48;color:#fff}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
 
 /* Upload area */
-.upload-area{border:2px dashed var(--border);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2)}
-.upload-area:hover{border-color:var(--accent);background:rgba(99,102,241,.05)}
+.upload-area{border:2px dashed var(--border);border-radius:var(--radius);padding:40px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2)}
+.upload-area:hover,.upload-area.dragover{border-color:var(--accent);background:rgba(124,58,237,.06)}
 .upload-area input{display:none}
-.upload-area p{color:var(--text-dim);font-size:13px;margin-top:4px}
-.upload-preview{max-width:120px;max-height:60px;margin-top:8px;border-radius:4px}
+.upload-area .upload-icon{font-size:40px;margin-bottom:12px;opacity:.5}
+.upload-area h3{font-size:16px;color:var(--text);margin-bottom:4px}
+.upload-area p{color:var(--text-dim);font-size:13px}
 
-/* Mini slide preview */
-.mini-preview{width:100%;max-width:480px;aspect-ratio:16/9;border-radius:8px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.5);margin-top:20px;position:relative;display:flex;flex-direction:column}
-.mini-preview .mp-header{height:12%;display:flex;align-items:center;justify-content:space-between;padding:0 5%}
-.mini-preview .mp-header img{height:70%;object-fit:contain}
-.mini-preview .mp-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5%}
-.mini-preview .mp-body h2{font-size:18px;margin-bottom:4px}
-.mini-preview .mp-body p{font-size:12px}
-.mini-preview .mp-footer{height:10%;display:flex;align-items:center;justify-content:space-between;padding:0 5%;font-size:9px;opacity:.7}
-
-/* Slide cards */
-.slide-list{display:flex;flex-direction:column;gap:12px;margin-top:16px}
-.slide-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;transition:all .2s;cursor:grab}
-.slide-card:active{cursor:grabbing}
-.slide-card.dragging{opacity:.4;border-color:var(--accent)}
-.slide-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.slide-card-header .slide-num{font-size:12px;color:var(--accent);font-weight:700}
-.slide-card-header .slide-actions{display:flex;gap:6px}
-.slide-card .form-row{margin-bottom:8px}
-.chart-preview-container{width:100%;max-width:400px;aspect-ratio:16/10;margin-top:8px;background:var(--surface);border-radius:6px;padding:8px}
-
-/* Data tab */
-.step-indicator{display:flex;gap:8px;margin-bottom:24px}
-.step{flex:1;padding:10px;text-align:center;background:var(--surface2);border-radius:var(--radius);font-size:13px;font-weight:600;color:var(--text-dim);border:1px solid var(--border)}
-.step.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-.step.done{background:var(--success);color:#fff;border-color:var(--success)}
-.data-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px}
-.data-table th,.data-table td{padding:8px 12px;border:1px solid var(--border);text-align:left}
-.data-table th{background:var(--surface3);color:var(--accent);font-weight:600}
+/* Data table */
+.data-table-wrap{overflow-x:auto;margin:16px 0;border-radius:var(--radius);border:1px solid var(--border)}
+.data-table{width:100%;border-collapse:collapse;font-size:13px}
+.data-table th,.data-table td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+.data-table th{background:var(--surface3);color:var(--accent2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.3px;position:sticky;top:0}
 .data-table td{background:var(--surface2)}
-.mapping-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
-.mapping-row .field-name{flex:1;font-weight:600;font-size:14px}
-.mapping-row select{flex:1}
-.mode-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;cursor:pointer;transition:all .2s}
-.mode-card:hover{border-color:var(--accent)}
-.mode-card.selected{border-color:var(--accent);background:rgba(99,102,241,.1)}
-.mode-card h4{font-size:14px;margin-bottom:4px}
-.mode-card p{font-size:12px;color:var(--text-dim)}
+.data-table tr:hover td{background:var(--surface3)}
+.data-table .row-num{color:var(--text-dim);font-size:11px;width:40px}
+.stats-bar{display:flex;gap:16px;margin:16px 0;flex-wrap:wrap}
+.stat-chip{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px}
+.stat-chip strong{color:var(--accent2)}
 
-/* Preview */
-.preview-container{display:flex;flex-direction:column;align-items:center;gap:20px}
-.preview-slide{width:100%;max-width:800px;aspect-ratio:16/9;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.6);position:relative;display:flex;flex-direction:column}
-.preview-slide .ps-header{height:10%;display:flex;align-items:center;justify-content:space-between;padding:0 4%}
-.preview-slide .ps-header img{height:60%;object-fit:contain}
-.preview-slide .ps-header span{font-size:12px}
-.preview-slide .ps-body{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 6%}
-.preview-slide .ps-body.cover-body{align-items:center;text-align:center;justify-content:center}
-.preview-slide .ps-body h2{font-size:28px;margin-bottom:8px}
-.preview-slide .ps-body p,.preview-slide .ps-body li{font-size:15px;line-height:1.6}
-.preview-slide .ps-body ul{list-style:disc;padding-left:20px}
-.preview-slide .ps-body .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px;width:100%}
-.preview-slide .ps-body blockquote{font-size:20px;font-style:italic;border-left:4px solid;padding-left:16px;line-height:1.5}
-.preview-slide .ps-footer{height:8%;display:flex;align-items:center;justify-content:space-between;padding:0 4%;font-size:10px;opacity:.6}
-.preview-nav{display:flex;align-items:center;gap:16px}
-.preview-nav .btn{min-width:100px}
-.preview-nav span{font-size:14px;color:var(--text-dim)}
-.preview-chart-container{width:90%;max-height:60%;margin:0 auto}
+/* Column selector */
+.col-selector{display:flex;flex-direction:column;gap:8px;margin:16px 0}
+.col-item{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);transition:all .2s}
+.col-item:hover{border-color:var(--accent)}
+.col-item input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+.col-item .col-name{font-weight:600;flex:1}
+.col-item .col-type{font-size:11px;color:var(--text-dim);background:var(--surface3);padding:2px 8px;border-radius:4px}
+.col-item select{max-width:140px}
 
-/* Claude tab */
-.claude-step{display:none}
-.claude-step.active{display:block}
-.prompt-area{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;font-family:'Fira Code',monospace;font-size:13px;line-height:1.6;max-height:400px;overflow-y:auto;white-space:pre-wrap;color:var(--text-dim);margin:16px 0}
-.toast{position:fixed;bottom:24px;right:24px;padding:12px 24px;border-radius:var(--radius);font-size:14px;font-weight:600;z-index:9999;transform:translateY(100px);opacity:0;transition:all .3s}
+/* Chart area */
+.chart-canvas-wrap{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:24px;margin:20px 0;position:relative;min-height:400px}
+.chart-canvas-wrap canvas{max-height:500px}
+.chart-config{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.chart-config .form-group{margin-bottom:0}
+.color-palette{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.color-swatch{width:32px;height:32px;border-radius:6px;cursor:pointer;border:2px solid transparent;transition:all .2s}
+.color-swatch:hover,.color-swatch.active{border-color:#fff;transform:scale(1.15)}
+
+/* Chart list */
+.chart-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px;transition:all .2s}
+.chart-card:hover{border-color:var(--accent)}
+.chart-card-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);background:var(--surface3)}
+.chart-card-header h3{font-size:15px;font-weight:700}
+.chart-card-body{padding:20px}
+.chart-card-body canvas{width:100%!important;max-height:350px}
+
+/* Export options */
+.export-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:20px}
+.export-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:all .2s}
+.export-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
+.export-card .export-icon{font-size:36px;margin-bottom:12px}
+.export-card h4{font-size:15px;margin-bottom:4px}
+.export-card p{font-size:12px;color:var(--text-dim)}
+
+/* Dashboard grid */
+.dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.dashboard-grid.single{grid-template-columns:1fr}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;padding:14px 28px;border-radius:var(--radius);font-size:14px;font-weight:600;z-index:9999;transform:translateY(100px);opacity:0;transition:all .3s}
 .toast.show{transform:translateY(0);opacity:1}
 .toast.success{background:var(--success);color:#fff}
 .toast.error{background:var(--danger);color:#fff}
-.cover-img-preview{max-width:200px;max-height:100px;margin-top:8px;border-radius:4px;object-fit:cover}
-.hidden-canvas{position:absolute;left:-9999px;top:-9999px}
+
+/* Empty state */
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-dim)}
+.empty-state .empty-icon{font-size:48px;margin-bottom:16px;opacity:.4}
+.empty-state h3{font-size:18px;color:var(--text);margin-bottom:8px}
+.empty-state p{font-size:14px;max-width:400px;margin:0 auto}
+
+/* Badge */
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.badge-num{background:rgba(124,58,237,.2);color:var(--accent2)}
+.badge-txt{background:rgba(120,120,160,.15);color:var(--text-dim)}
+
+/* Responsive */
+@media(max-width:900px){
+  .sidebar{width:60px;min-width:60px}
+  .sidebar-header h1 span,.sidebar-header p,.tab-btn span:not(.icon){display:none}
+  .tab-btn{justify-content:center;padding:14px}
+  .main{padding:20px}
+  .form-row,.form-row-3{grid-template-columns:1fr}
+  .dashboard-grid{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
 
 <aside class="sidebar">
-  <h1><span>PPT</span> Generator</h1>
-  <button class="tab-btn active" onclick="switchTab(0)"><span class="icon">⚙</span> Configuración</button>
-  <button class="tab-btn" onclick="switchTab(1)"><span class="icon">▦</span> Slides</button>
-  <button class="tab-btn" onclick="switchTab(2)"><span class="icon">📊</span> Datos Externos</button>
-  <button class="tab-btn" onclick="switchTab(3)"><span class="icon">👁</span> Preview & Export</button>
-  <button class="tab-btn" onclick="switchTab(4)"><span class="icon">✦</span> Generar con Claude</button>
+  <div class="sidebar-header">
+    <h1><span>Chart</span> Gen</h1>
+    <p>Datos → Gráficos</p>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="tab-btn active" onclick="switchTab(0)"><span class="icon">📁</span> <span>Datos</span></button>
+    <button class="tab-btn" onclick="switchTab(1)"><span class="icon">⚙</span> <span>Configurar</span></button>
+    <button class="tab-btn" onclick="switchTab(2)"><span class="icon">📊</span> <span>Gráficos</span></button>
+    <button class="tab-btn" onclick="switchTab(3)"><span class="icon">🖼</span> <span>Dashboard</span></button>
+    <button class="tab-btn" onclick="switchTab(4)"><span class="icon">💾</span> <span>Exportar</span></button>
+  </nav>
 </aside>
 
 <main class="main">
 
-<!-- ═══════════ TAB 0: CONFIGURACIÓN ═══════════ -->
+<!-- ═══════════ TAB 0: DATOS ═══════════ -->
 <div class="tab-content active" id="tab-0">
-  <h2 class="section-title">Configuración</h2>
-  <div class="form-row">
-    <div class="form-group"><label>Título de la presentación</label><input id="cfg-title" value="Mi Presentación" oninput="updateMiniPreview()"></div>
-    <div class="form-group"><label>Subtítulo</label><input id="cfg-subtitle" value="Subtítulo aquí" oninput="updateMiniPreview()"></div>
-  </div>
-  <div class="form-row">
-    <div class="form-group"><label>Nombre del cliente</label><input id="cfg-client" value="Cliente" oninput="updateMiniPreview()"></div>
-    <div class="form-group"><label>Nombre del autor</label><input id="cfg-author" value="Autor" oninput="updateMiniPreview()"></div>
-  </div>
-  <div class="form-group"><label>Fecha</label><input type="date" id="cfg-date" oninput="updateMiniPreview()"></div>
+  <h2 class="section-title">Cargar datos</h2>
+  <p class="section-desc">Subí un archivo CSV, XLSX o JSON, o pegá datos directamente.</p>
 
-  <div class="color-row">
-    <div class="color-group"><label>Color primario</label><input type="color" id="cfg-color1" value="#6366f1" oninput="updateMiniPreview()"></div>
-    <div class="color-group"><label>Color secundario</label><input type="color" id="cfg-color2" value="#818cf8" oninput="updateMiniPreview()"></div>
-    <div class="color-group"><label>Color de texto</label><input type="color" id="cfg-textcolor" value="#ffffff" oninput="updateMiniPreview()"></div>
+  <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.json,.tsv" onchange="handleFileUpload(event)">
+    <div class="upload-icon">📂</div>
+    <h3>Arrastrá tu archivo acá o hacé click</h3>
+    <p>CSV, XLSX, XLS, JSON, TSV</p>
   </div>
 
-  <div class="form-row">
-    <div class="form-group">
-      <label>Logo (PNG/JPG)</label>
-      <div class="upload-area" onclick="this.querySelector('input').click()">
-        <input type="file" accept="image/png,image/jpeg" onchange="handleLogoUpload(event)">
-        <p>Click para subir logo</p>
-        <img id="logo-preview" class="upload-preview" style="display:none">
-      </div>
+  <div style="text-align:center;margin:20px 0;color:var(--text-dim);font-size:13px">— o pegá datos manualmente —</div>
+
+  <div class="form-group">
+    <label>Pegar datos (CSV, JSON, o valores separados por tab)</label>
+    <textarea id="paste-data" rows="6" placeholder='nombre,valor,categoría&#10;Ene,120,A&#10;Feb,340,B&#10;Mar,210,A'></textarea>
+  </div>
+  <div class="btn-group">
+    <button class="btn btn-primary" onclick="parsePastedData()">Cargar datos pegados</button>
+    <button class="btn btn-secondary" onclick="loadSampleData()">Cargar datos de ejemplo</button>
+  </div>
+
+  <div id="data-info" style="display:none">
+    <div class="stats-bar" id="stats-bar"></div>
+    <div class="data-table-wrap" style="max-height:400px;overflow-y:auto">
+      <table class="data-table" id="data-table"></table>
     </div>
-    <div class="form-group">
-      <label>Imagen de portada (PNG/JPG)</label>
-      <div class="upload-area" onclick="this.querySelector('input').click()">
-        <input type="file" accept="image/png,image/jpeg" onchange="handleCoverUpload(event)">
-        <p>Click para subir imagen de portada</p>
-        <img id="cover-preview" class="cover-img-preview" style="display:none">
-      </div>
-    </div>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="switchTab(1)">Continuar a configurar →</button>
   </div>
-
-  <label>Preview en tiempo real</label>
-  <div class="mini-preview" id="mini-preview"></div>
 </div>
 
-<!-- ═══════════ TAB 1: SLIDES ═══════════ -->
+<!-- ═══════════ TAB 1: CONFIGURAR ═══════════ -->
 <div class="tab-content" id="tab-1">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-    <h2 class="section-title" style="margin:0">Slides</h2>
-    <button class="btn btn-primary" onclick="addSlide()">+ Agregar slide</button>
-  </div>
-  <div class="slide-list" id="slide-list"></div>
-</div>
+  <h2 class="section-title">Configurar gráfico</h2>
+  <p class="section-desc">Elegí el tipo de gráfico y configurá los ejes.</p>
 
-<!-- ═══════════ TAB 2: DATOS EXTERNOS ═══════════ -->
-<div class="tab-content" id="tab-2">
-  <h2 class="section-title">Datos Externos</h2>
-  <div class="step-indicator">
-    <div class="step active" id="ds-1">1. Upload</div>
-    <div class="step" id="ds-2">2. Mapeo</div>
-    <div class="step" id="ds-3">3. Modo de uso</div>
+  <div id="no-data-msg" class="empty-state">
+    <div class="empty-icon">📂</div>
+    <h3>No hay datos cargados</h3>
+    <p>Primero cargá datos en el tab anterior.</p>
   </div>
-  <div id="data-step-1">
-    <div class="upload-area" onclick="this.querySelector('input').click()" style="margin-bottom:16px">
-      <input type="file" accept=".csv,.xlsx,.xls,.json" onchange="handleDataUpload(event)">
-      <p>Arrastrá o hacé click para subir CSV, XLSX o JSON</p>
+
+  <div id="config-panel" style="display:none">
+    <div class="form-group">
+      <label>Tipo de gráfico</label>
+      <div class="btn-group" id="chart-type-btns"></div>
     </div>
-    <div id="data-preview-table"></div>
-  </div>
-  <div id="data-step-2" style="display:none">
-    <h3 style="margin-bottom:12px;font-size:16px">Mapeo de campos</h3>
-    <div id="mapping-list"></div>
-    <button class="btn btn-primary" style="margin-top:16px" onclick="applyMapping()">Aplicar mapeo</button>
-  </div>
-  <div id="data-step-3" style="display:none">
-    <h3 style="margin-bottom:12px;font-size:16px">Modo de uso</h3>
-    <div class="mode-card" onclick="selectDataMode('per-row')"><h4>A. Un slide por fila</h4><p>Genera un slide Título+Contenido por cada fila usando la plantilla.</p></div>
-    <div class="mode-card" onclick="selectDataMode('table')"><h4>B. Tabla resumen</h4><p>Un slide con tabla mostrando todas las filas.</p></div>
-    <div class="mode-card" onclick="selectDataMode('chart')"><h4>C. Gráfico automático</h4><p>Detecta columnas numéricas y genera un gráfico de barras.</p></div>
-    <div class="mode-card" onclick="selectDataMode('replace')"><h4>D. Reemplazar variables</h4><p>Usa la primera fila para rellenar {{variables}} en los slides manuales.</p></div>
-    <button class="btn btn-success" style="margin-top:16px" onclick="executeDataMode()">Ejecutar</button>
-  </div>
-</div>
 
-<!-- ═══════════ TAB 3: PREVIEW & EXPORT ═══════════ -->
-<div class="tab-content" id="tab-3">
-  <h2 class="section-title">Preview & Export</h2>
-  <div class="preview-container">
-    <div class="preview-slide" id="preview-slide"></div>
-    <div class="preview-nav">
-      <button class="btn btn-secondary" onclick="prevPreview()">← Anterior</button>
-      <span id="preview-counter">0 / 0</span>
-      <button class="btn btn-secondary" onclick="nextPreview()">Siguiente →</button>
-    </div>
-    <button class="btn btn-primary" style="margin-top:12px;padding:14px 40px;font-size:16px" onclick="generatePPTX()">Generar PPTX</button>
-  </div>
-</div>
-
-<!-- ═══════════ TAB 4: GENERAR CON CLAUDE ═══════════ -->
-<div class="tab-content" id="tab-4">
-  <h2 class="section-title">Generar con Claude</h2>
-  <div class="step-indicator">
-    <div class="step active" id="cs-1">1. Brief</div>
-    <div class="step" id="cs-2">2. Prompt</div>
-    <div class="step" id="cs-3">3. Respuesta</div>
-  </div>
-
-  <div class="claude-step active" id="claude-step-1">
-    <div class="form-group"><label>Describí tu presentación</label><textarea id="claude-brief" rows="8" placeholder="Ej: Presentación comercial para empresa de logística..."></textarea></div>
     <div class="form-row">
       <div class="form-group">
-        <label>Cantidad de slides</label>
-        <select id="claude-count">
-          <option value="5">5 slides</option>
-          <option value="8" selected>8 slides</option>
-          <option value="10">10 slides</option>
-          <option value="12">12 slides</option>
-          <option value="custom">Personalizado</option>
-        </select>
+        <label>Eje X / Etiquetas</label>
+        <select id="x-axis"></select>
       </div>
       <div class="form-group">
-        <label>Tipo de presentación</label>
-        <select id="claude-type">
-          <option>Propuesta comercial</option>
-          <option>Informe técnico</option>
-          <option>Onboarding</option>
-          <option>Resumen ejecutivo</option>
-          <option>Demo</option>
-        </select>
+        <label>Columnas de datos (Eje Y)</label>
+        <div class="col-selector" id="y-cols"></div>
       </div>
     </div>
-    <div class="form-group" id="custom-count-group" style="display:none"><label>Cantidad personalizada</label><input type="number" id="claude-custom-count" min="3" max="30" value="8"></div>
-    <button class="btn btn-primary" onclick="goClaudeStep(2)">Generar prompt para Claude →</button>
-  </div>
 
-  <div class="claude-step" id="claude-step-2">
-    <label>Prompt generado (solo lectura)</label>
-    <div class="prompt-area" id="claude-prompt"></div>
-    <div style="display:flex;gap:12px">
-      <button class="btn btn-primary" onclick="copyPrompt()">Copiar prompt</button>
-      <button class="btn btn-secondary" onclick="goClaudeStep(3)">Siguiente →</button>
-      <button class="btn btn-secondary" onclick="goClaudeStep(1)">← Volver</button>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Título del gráfico</label>
+        <input id="chart-title" value="" placeholder="Mi gráfico">
+      </div>
+      <div class="form-group">
+        <label>Agrupar por (opcional)</label>
+        <select id="group-by"><option value="">— Ninguno —</option></select>
+      </div>
+    </div>
+
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Mostrar leyenda</label>
+        <select id="show-legend"><option value="true">Sí</option><option value="false">No</option></select>
+      </div>
+      <div class="form-group">
+        <label>Mostrar valores</label>
+        <select id="show-values"><option value="false">No</option><option value="true">Sí</option></select>
+      </div>
+      <div class="form-group">
+        <label>Orientación</label>
+        <select id="orientation"><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Paleta de colores</label>
+      <div id="palette-options"></div>
+    </div>
+
+    <div class="form-group">
+      <label>Tema de fondo</label>
+      <div class="btn-group">
+        <button class="btn btn-sm btn-secondary" onclick="setBgTheme('dark')" id="bg-dark">Oscuro</button>
+        <button class="btn btn-sm btn-secondary" onclick="setBgTheme('light')" id="bg-light">Claro</button>
+        <button class="btn btn-sm btn-secondary" onclick="setBgTheme('transparent')" id="bg-transparent">Transparente</button>
+      </div>
+    </div>
+
+    <div class="btn-group" style="margin-top:20px">
+      <button class="btn btn-primary" onclick="createChart()">Crear gráfico</button>
+      <button class="btn btn-secondary" onclick="previewChart()">Vista previa</button>
+    </div>
+
+    <div class="chart-canvas-wrap" id="preview-wrap" style="display:none">
+      <canvas id="preview-canvas"></canvas>
     </div>
   </div>
+</div>
 
-  <div class="claude-step" id="claude-step-3">
-    <div class="form-group"><label>Pegá la respuesta JSON de Claude</label><textarea id="claude-response" rows="12" placeholder='[{ "type": "cover", "title": "...", ... }]'></textarea></div>
-    <div style="display:flex;gap:12px">
-      <button class="btn btn-success" onclick="loadClaudeSlides()">Cargar slides</button>
-      <button class="btn btn-secondary" onclick="goClaudeStep(2)">← Volver</button>
+<!-- ═══════════ TAB 2: GRÁFICOS ═══════════ -->
+<div class="tab-content" id="tab-2">
+  <h2 class="section-title">Mis gráficos</h2>
+  <p class="section-desc">Todos los gráficos que creaste. Podés editarlos o eliminarlos.</p>
+  <div id="charts-list"></div>
+  <div id="no-charts" class="empty-state">
+    <div class="empty-icon">📊</div>
+    <h3>No hay gráficos todavía</h3>
+    <p>Configurá y creá un gráfico desde el tab anterior.</p>
+  </div>
+</div>
+
+<!-- ═══════════ TAB 3: DASHBOARD ═══════════ -->
+<div class="tab-content" id="tab-3">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <h2 class="section-title" style="margin-bottom:0">Dashboard</h2>
+    <div class="btn-group">
+      <button class="btn btn-sm btn-secondary" onclick="setDashboardLayout('grid')">Grilla</button>
+      <button class="btn btn-sm btn-secondary" onclick="setDashboardLayout('single')">Uno por fila</button>
     </div>
-    <p id="claude-status" style="margin-top:12px;font-size:14px"></p>
+  </div>
+  <p class="section-desc">Vista combinada de todos tus gráficos.</p>
+  <div class="dashboard-grid" id="dashboard-grid"></div>
+  <div id="no-dash" class="empty-state">
+    <div class="empty-icon">🖼</div>
+    <h3>Dashboard vacío</h3>
+    <p>Creá gráficos para verlos acá.</p>
+  </div>
+</div>
+
+<!-- ═══════════ TAB 4: EXPORTAR ═══════════ -->
+<div class="tab-content" id="tab-4">
+  <h2 class="section-title">Exportar</h2>
+  <p class="section-desc">Descargá tus gráficos en distintos formatos.</p>
+
+  <div id="no-export" class="empty-state">
+    <div class="empty-icon">💾</div>
+    <h3>Nada para exportar</h3>
+    <p>Creá al menos un gráfico primero.</p>
+  </div>
+
+  <div id="export-panel" style="display:none">
+    <div class="form-group">
+      <label>Seleccionar gráfico</label>
+      <select id="export-select"></select>
+    </div>
+
+    <div class="export-grid">
+      <div class="export-card" onclick="exportAs('png')">
+        <div class="export-icon">🖼</div>
+        <h4>PNG</h4>
+        <p>Imagen de alta resolución</p>
+      </div>
+      <div class="export-card" onclick="exportAs('jpg')">
+        <div class="export-icon">📷</div>
+        <h4>JPG</h4>
+        <p>Imagen comprimida</p>
+      </div>
+      <div class="export-card" onclick="exportAs('svg')">
+        <div class="export-icon">✏</div>
+        <h4>SVG</h4>
+        <p>Vectorial, ideal para escalar</p>
+      </div>
+      <div class="export-card" onclick="exportAs('json')">
+        <div class="export-icon">{ }</div>
+        <h4>JSON</h4>
+        <p>Datos + configuración</p>
+      </div>
+      <div class="export-card" onclick="exportAs('csv')">
+        <div class="export-icon">📄</div>
+        <h4>CSV</h4>
+        <p>Datos tabulares</p>
+      </div>
+      <div class="export-card" onclick="exportAllPng()">
+        <div class="export-icon">📦</div>
+        <h4>Todos (PNG)</h4>
+        <p>Descarga cada gráfico como PNG</p>
+      </div>
+    </div>
+
+    <div class="chart-canvas-wrap" style="margin-top:24px">
+      <canvas id="export-preview"></canvas>
+    </div>
   </div>
 </div>
 
 </main>
-
-<!-- Hidden canvases for chart rendering -->
-<div class="hidden-canvas" id="hidden-charts"></div>
 
 <div class="toast" id="toast"></div>
 
@@ -306,31 +367,56 @@ label{font-size:13px;color:var(--text-dim);font-weight:500;display:block;margin-
 // ═══════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════
-const state = {
-  config: {},
-  slides: [],
-  logoBase64: null,
-  coverBase64: null,
-  externalData: null,
-  externalHeaders: [],
-  mapping: {},
-  selectedDataMode: null,
-  previewIndex: 0
+const S = {
+  rawData: [],
+  headers: [],
+  colTypes: {},
+  charts: [],
+  selectedType: 'bar',
+  selectedPalette: 0,
+  bgTheme: 'dark',
+  dashLayout: 'grid'
 };
 
+const CHART_TYPES = [
+  { id: 'bar', label: 'Barras', icon: '📊' },
+  { id: 'line', label: 'Líneas', icon: '📈' },
+  { id: 'pie', label: 'Torta', icon: '🥧' },
+  { id: 'doughnut', label: 'Dona', icon: '🍩' },
+  { id: 'radar', label: 'Radar', icon: '🕸' },
+  { id: 'polarArea', label: 'Polar', icon: '🎯' },
+  { id: 'scatter', label: 'Dispersión', icon: '✦' },
+  { id: 'bubble', label: 'Burbuja', icon: '🫧' }
+];
+
+const PALETTES = [
+  { name: 'Vivid', colors: ['#7c3aed','#ec4899','#3b82f6','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf6','#f97316','#14b8a6'] },
+  { name: 'Pastel', colors: ['#c4b5fd','#fbcfe8','#93c5fd','#86efac','#fde68a','#fca5a5','#a5f3fc','#d8b4fe','#fed7aa','#99f6e4'] },
+  { name: 'Earth', colors: ['#92400e','#78350f','#365314','#1e3a5f','#713f12','#4a1d96','#164e63','#831843','#3f3f46','#1c1917'] },
+  { name: 'Neon', colors: ['#a855f7','#f43f5e','#0ea5e9','#10b981','#eab308','#f97316','#06b6d4','#d946ef','#84cc16','#14b8a6'] },
+  { name: 'Ocean', colors: ['#0c4a6e','#155e75','#164e63','#1e40af','#1e3a8a','#312e81','#3730a3','#4338ca','#4f46e5','#6366f1'] },
+  { name: 'Sunset', colors: ['#dc2626','#ea580c','#d97706','#ca8a04','#f59e0b','#f97316','#ef4444','#e11d48','#be185d','#9333ea'] }
+];
+
+let previewChartInstance = null;
 let chartInstances = {};
-let dragSrcIdx = null;
 
 // ═══════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('cfg-date').value = today;
-  document.getElementById('claude-count').addEventListener('change', e => {
-    document.getElementById('custom-count-group').style.display = e.target.value === 'custom' ? 'block' : 'none';
+  renderChartTypeBtns();
+  renderPaletteOptions();
+  setBgTheme('dark');
+
+  // Drag and drop on upload area
+  const ua = document.getElementById('upload-area');
+  ['dragenter','dragover'].forEach(e => ua.addEventListener(e, ev => { ev.preventDefault(); ua.classList.add('dragover'); }));
+  ['dragleave','drop'].forEach(e => ua.addEventListener(e, ev => { ev.preventDefault(); ua.classList.remove('dragover'); }));
+  ua.addEventListener('drop', ev => {
+    const file = ev.dataTransfer.files[0];
+    if (file) processFile(file);
   });
-  updateMiniPreview();
 });
 
 // ═══════════════════════════════════════════
@@ -339,687 +425,611 @@ document.addEventListener('DOMContentLoaded', () => {
 function switchTab(idx) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
   document.querySelectorAll('.tab-content').forEach((c, i) => c.classList.toggle('active', i === idx));
-  if (idx === 3) renderPreview();
+  if (idx === 1) refreshConfigPanel();
+  if (idx === 2) renderChartsList();
+  if (idx === 3) renderDashboard();
+  if (idx === 4) refreshExportPanel();
 }
 
-// ═══════════════════════════════════════════
-// TOAST
-// ═══════════════════════════════════════════
 function showToast(msg, type = 'success') {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast ' + type;
+  t.textContent = msg; t.className = 'toast ' + type;
   setTimeout(() => t.classList.add('show'), 10);
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
 // ═══════════════════════════════════════════
-// CONFIG helpers
+// DATA LOADING
 // ═══════════════════════════════════════════
-function getConfig() {
-  return {
-    title: document.getElementById('cfg-title').value,
-    subtitle: document.getElementById('cfg-subtitle').value,
-    client: document.getElementById('cfg-client').value,
-    author: document.getElementById('cfg-author').value,
-    date: document.getElementById('cfg-date').value,
-    color1: document.getElementById('cfg-color1').value,
-    color2: document.getElementById('cfg-color2').value,
-    textColor: document.getElementById('cfg-textcolor').value
-  };
+function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
 }
 
-function handleLogoUpload(e) {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    state.logoBase64 = ev.target.result;
-    const p = document.getElementById('logo-preview');
-    p.src = ev.target.result; p.style.display = 'block';
-    updateMiniPreview();
-  };
-  reader.readAsDataURL(file);
-}
-
-function handleCoverUpload(e) {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    state.coverBase64 = ev.target.result;
-    const p = document.getElementById('cover-preview');
-    p.src = ev.target.result; p.style.display = 'block';
-    updateMiniPreview();
-  };
-  reader.readAsDataURL(file);
-}
-
-// ═══════════════════════════════════════════
-// MINI PREVIEW
-// ═══════════════════════════════════════════
-function updateMiniPreview() {
-  const c = getConfig();
-  const el = document.getElementById('mini-preview');
-  const logoHtml = state.logoBase64 ? `<img src="${state.logoBase64}" alt="logo">` : '';
-  const bgStyle = state.coverBase64
-    ? `background:linear-gradient(rgba(0,0,0,.5),rgba(0,0,0,.5)),url(${state.coverBase64}) center/cover;`
-    : `background:${c.color1};`;
-  el.innerHTML = `
-    <div class="mp-header" style="background:${c.color1}20">${logoHtml}<span style="color:${c.textColor};font-size:10px">${c.client}</span></div>
-    <div class="mp-body" style="${bgStyle}">
-      <h2 style="color:${c.color2}">${c.title || 'Título'}</h2>
-      <p style="color:${c.textColor}">${c.subtitle || 'Subtítulo'}</p>
-    </div>
-    <div class="mp-footer" style="background:${c.color1};color:${c.textColor}">
-      <span>${c.author}</span><span>${c.date}</span><span>1</span>
-    </div>`;
-}
-
-// ═══════════════════════════════════════════
-// SLIDES
-// ═══════════════════════════════════════════
-const SLIDE_TYPES = [
-  { value: 'cover', label: 'Portada' },
-  { value: 'content', label: 'Título + Contenido' },
-  { value: 'two-columns', label: 'Dos columnas' },
-  { value: 'image', label: 'Solo imagen' },
-  { value: 'quote', label: 'Cita destacada' },
-  { value: 'table', label: 'Tabla de datos' },
-  { value: 'chart', label: 'Gráfico' },
-  { value: 'closing', label: 'Cierre' }
-];
-
-function addSlide(data) {
-  const s = data || { type: 'content', title: '', content: '', left: '', right: '', chartType: 'bar', chartData: '', imageBase64: null };
-  state.slides.push(s);
-  renderSlideList();
-}
-
-function removeSlide(i) {
-  state.slides.splice(i, 1);
-  renderSlideList();
-}
-
-function duplicateSlide(i) {
-  state.slides.splice(i + 1, 0, JSON.parse(JSON.stringify(state.slides[i])));
-  renderSlideList();
-}
-
-function renderSlideList() {
-  const list = document.getElementById('slide-list');
-  list.innerHTML = '';
-  state.slides.forEach((s, i) => {
-    const card = document.createElement('div');
-    card.className = 'slide-card';
-    card.draggable = true;
-    card.dataset.index = i;
-    card.addEventListener('dragstart', onDragStart);
-    card.addEventListener('dragover', onDragOver);
-    card.addEventListener('drop', onDrop);
-    card.addEventListener('dragend', onDragEnd);
-
-    const typeOpts = SLIDE_TYPES.map(t => `<option value="${t.value}" ${t.value === s.type ? 'selected' : ''}>${t.label}</option>`).join('');
-
-    let extra = '';
-    if (s.type === 'two-columns') {
-      extra = `
-        <div class="form-row">
-          <div class="form-group"><label>Columna izquierda</label><textarea rows="3" oninput="state.slides[${i}].left=this.value">${esc(s.left || '')}</textarea></div>
-          <div class="form-group"><label>Columna derecha</label><textarea rows="3" oninput="state.slides[${i}].right=this.value">${esc(s.right || '')}</textarea></div>
-        </div>`;
-    } else if (s.type === 'chart') {
-      extra = `
-        <div class="form-row">
-          <div class="form-group">
-            <label>Tipo de gráfico</label>
-            <select onchange="state.slides[${i}].chartType=this.value;renderChartPreview(${i})">
-              <option value="bar" ${s.chartType === 'bar' ? 'selected' : ''}>Barras</option>
-              <option value="line" ${s.chartType === 'line' ? 'selected' : ''}>Líneas</option>
-              <option value="pie" ${s.chartType === 'pie' ? 'selected' : ''}>Torta</option>
-              <option value="radar" ${s.chartType === 'radar' ? 'selected' : ''}>Área/Radar</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Datos JSON</label>
-          <textarea rows="4" id="chart-data-${i}" oninput="state.slides[${i}].chartData=this.value;renderChartPreview(${i})" placeholder='{"labels":["Ene","Feb"],"datasets":[{"label":"Ventas","data":[10,20]}]}'>${esc(s.chartData || '')}</textarea>
-        </div>
-        <div class="chart-preview-container"><canvas id="chart-canvas-${i}"></canvas></div>`;
-    } else if (s.type === 'image') {
-      extra = `
-        <div class="form-group">
-          <label>Imagen</label>
-          <div class="upload-area" onclick="this.querySelector('input').click()" style="padding:12px">
-            <input type="file" accept="image/*" onchange="handleSlideImage(event,${i})" style="display:none">
-            <p>Click para subir imagen</p>
-          </div>
-          ${s.imageBase64 ? `<img src="${s.imageBase64}" style="max-width:200px;margin-top:8px;border-radius:4px">` : ''}
-        </div>`;
-    } else if (s.type === 'table') {
-      extra = `
-        <div class="form-group">
-          <label>Datos de la tabla (JSON: array de objetos)</label>
-          <textarea rows="4" oninput="state.slides[${i}].content=this.value" placeholder='[{"Col1":"A","Col2":"B"},{"Col1":"C","Col2":"D"}]'>${esc(s.content || '')}</textarea>
-        </div>`;
-    } else {
-      extra = `
-        <div class="form-group"><label>Contenido</label><textarea rows="3" oninput="state.slides[${i}].content=this.value" placeholder="Soporte {{variables}}. Saltos de línea = bullets.">${esc(s.content || '')}</textarea></div>`;
-    }
-
-    card.innerHTML = `
-      <div class="slide-card-header">
-        <span class="slide-num">SLIDE ${i + 1}</span>
-        <div class="slide-actions">
-          <button class="btn-icon" title="Duplicar" onclick="duplicateSlide(${i})">⧉</button>
-          <button class="btn-icon" title="Eliminar" onclick="removeSlide(${i})" style="color:var(--danger)">✕</button>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Tipo</label><select onchange="state.slides[${i}].type=this.value;renderSlideList()">${typeOpts}</select></div>
-        <div class="form-group"><label>Título</label><input value="${esc(s.title || '')}" oninput="state.slides[${i}].title=this.value"></div>
-      </div>
-      ${extra}`;
-    list.appendChild(card);
-
-    if (s.type === 'chart' && s.chartData) {
-      setTimeout(() => renderChartPreview(i), 50);
-    }
-  });
-}
-
-function esc(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-function handleSlideImage(e, idx) {
-  const file = e.target.files[0]; if (!file) return;
-  const r = new FileReader();
-  r.onload = ev => { state.slides[idx].imageBase64 = ev.target.result; renderSlideList(); };
-  r.readAsDataURL(file);
-}
-
-// Drag & drop
-function onDragStart(e) {
-  dragSrcIdx = +e.currentTarget.dataset.index;
-  e.currentTarget.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-}
-function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
-function onDrop(e) {
-  e.preventDefault();
-  const dst = +e.currentTarget.dataset.index;
-  if (dragSrcIdx !== null && dragSrcIdx !== dst) {
-    const item = state.slides.splice(dragSrcIdx, 1)[0];
-    state.slides.splice(dst, 0, item);
-    renderSlideList();
-  }
-}
-function onDragEnd(e) { e.currentTarget.classList.remove('dragging'); dragSrcIdx = null; }
-
-// Chart preview in slide editor
-function renderChartPreview(idx) {
-  const s = state.slides[idx];
-  const canvasId = 'chart-canvas-' + idx;
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); delete chartInstances[canvasId]; }
-  let data;
-  try { data = JSON.parse(s.chartData); } catch { return; }
-  if (!data.labels || !data.datasets) return;
-  const colors = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899'];
-  data.datasets.forEach((ds, di) => {
-    if (!ds.backgroundColor) {
-      ds.backgroundColor = s.chartType === 'pie' ? colors : colors[di % colors.length];
-      ds.borderColor = s.chartType === 'line' ? colors[di % colors.length] : undefined;
-    }
-  });
-  chartInstances[canvasId] = new Chart(canvas, { type: s.chartType === 'radar' ? 'radar' : s.chartType, data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#ccc' } } }, scales: s.chartType === 'pie' ? {} : { x: { ticks: { color: '#999' } }, y: { ticks: { color: '#999' } } } } });
-}
-
-// ═══════════════════════════════════════════
-// DATA EXTERNAL (TAB 2)
-// ═══════════════════════════════════════════
-function setDataStep(n) {
-  [1,2,3].forEach(s => {
-    document.getElementById('ds-' + s).className = 'step' + (s < n ? ' done' : s === n ? ' active' : '');
-    document.getElementById('data-step-' + s).style.display = s === n ? 'block' : 'none';
-  });
-}
-
-function handleDataUpload(e) {
-  const file = e.target.files[0]; if (!file) return;
+function processFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
-
   if (ext === 'json') {
     file.text().then(txt => {
-      const parsed = JSON.parse(txt);
-      const rows = Array.isArray(parsed) ? parsed : [parsed];
-      state.externalHeaders = Object.keys(rows[0]);
-      state.externalData = rows;
-      showDataPreview();
-    }).catch(() => showToast('Error al leer JSON', 'error'));
+      try {
+        let parsed = JSON.parse(txt);
+        if (!Array.isArray(parsed)) parsed = [parsed];
+        loadData(parsed);
+      } catch { showToast('Error al parsear JSON', 'error'); }
+    });
+  } else if (ext === 'csv' || ext === 'tsv') {
+    file.text().then(txt => {
+      const sep = ext === 'tsv' ? '\t' : detectSeparator(txt);
+      const rows = parseCSV(txt, sep);
+      loadData(rows);
+    });
   } else {
     const reader = new FileReader();
     reader.onload = ev => {
-      const wb = XLSX.read(ev.target.result, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws);
-      if (!rows.length) { showToast('Archivo vacío', 'error'); return; }
-      state.externalHeaders = Object.keys(rows[0]);
-      state.externalData = rows;
-      showDataPreview();
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws);
+        loadData(rows);
+      } catch { showToast('Error al leer archivo', 'error'); }
     };
     reader.readAsArrayBuffer(file);
   }
 }
 
-function showDataPreview() {
-  const rows = state.externalData.slice(0, 5);
-  let html = '<table class="data-table"><thead><tr>';
-  state.externalHeaders.forEach(h => html += `<th>${esc(h)}</th>`);
+function detectSeparator(txt) {
+  const first = txt.split('\n')[0] || '';
+  if (first.split('\t').length > first.split(',').length) return '\t';
+  if (first.split(';').length > first.split(',').length) return ';';
+  return ',';
+}
+
+function parseCSV(txt, sep) {
+  const lines = txt.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(sep).map(h => h.trim().replace(/^["']|["']$/g, ''));
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const vals = line.split(sep).map(v => v.trim().replace(/^["']|["']$/g, ''));
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+    return obj;
+  });
+}
+
+function parsePastedData() {
+  const txt = document.getElementById('paste-data').value.trim();
+  if (!txt) { showToast('Pegá datos primero', 'error'); return; }
+  try {
+    let parsed = JSON.parse(txt);
+    if (!Array.isArray(parsed)) parsed = [parsed];
+    loadData(parsed);
+  } catch {
+    const sep = detectSeparator(txt);
+    const rows = parseCSV(txt, sep);
+    if (rows.length) loadData(rows);
+    else showToast('No se pudieron parsear los datos', 'error');
+  }
+}
+
+function loadSampleData() {
+  const data = [
+    { Mes: 'Enero', Ventas: 12400, Gastos: 8200, Clientes: 340, Region: 'Norte' },
+    { Mes: 'Febrero', Ventas: 15800, Gastos: 9100, Clientes: 420, Region: 'Norte' },
+    { Mes: 'Marzo', Ventas: 13200, Gastos: 7800, Clientes: 380, Region: 'Sur' },
+    { Mes: 'Abril', Ventas: 18500, Gastos: 10200, Clientes: 510, Region: 'Sur' },
+    { Mes: 'Mayo', Ventas: 21000, Gastos: 11500, Clientes: 620, Region: 'Este' },
+    { Mes: 'Junio', Ventas: 19300, Gastos: 10800, Clientes: 580, Region: 'Este' },
+    { Mes: 'Julio', Ventas: 22100, Gastos: 12300, Clientes: 690, Region: 'Oeste' },
+    { Mes: 'Agosto', Ventas: 24500, Gastos: 13100, Clientes: 750, Region: 'Oeste' },
+    { Mes: 'Septiembre', Ventas: 20800, Gastos: 11900, Clientes: 640, Region: 'Norte' },
+    { Mes: 'Octubre', Ventas: 23600, Gastos: 12700, Clientes: 710, Region: 'Sur' },
+    { Mes: 'Noviembre', Ventas: 26200, Gastos: 14500, Clientes: 820, Region: 'Este' },
+    { Mes: 'Diciembre', Ventas: 29800, Gastos: 16200, Clientes: 940, Region: 'Oeste' }
+  ];
+  loadData(data);
+}
+
+function loadData(rows) {
+  if (!rows || !rows.length) { showToast('No hay datos', 'error'); return; }
+  S.headers = Object.keys(rows[0]);
+  S.rawData = rows;
+  analyzeColumns();
+  renderDataTable();
+  showToast(`${rows.length} filas cargadas con ${S.headers.length} columnas`);
+}
+
+function analyzeColumns() {
+  S.colTypes = {};
+  S.headers.forEach(h => {
+    const vals = S.rawData.map(r => r[h]).filter(v => v !== '' && v !== null && v !== undefined);
+    const numCount = vals.filter(v => !isNaN(Number(v))).length;
+    S.colTypes[h] = numCount / vals.length > 0.8 ? 'number' : 'text';
+  });
+}
+
+function renderDataTable() {
+  document.getElementById('data-info').style.display = 'block';
+  const numCols = S.headers.filter(h => S.colTypes[h] === 'number');
+  const txtCols = S.headers.filter(h => S.colTypes[h] === 'text');
+
+  let statsHtml = `<div class="stat-chip"><strong>${S.rawData.length}</strong> filas</div>`;
+  statsHtml += `<div class="stat-chip"><strong>${S.headers.length}</strong> columnas</div>`;
+  statsHtml += `<div class="stat-chip"><strong>${numCols.length}</strong> numéricas</div>`;
+  statsHtml += `<div class="stat-chip"><strong>${txtCols.length}</strong> texto</div>`;
+  document.getElementById('stats-bar').innerHTML = statsHtml;
+
+  let html = '<thead><tr><th class="row-num">#</th>';
+  S.headers.forEach(h => {
+    const badge = S.colTypes[h] === 'number' ? '<span class="badge badge-num">123</span>' : '<span class="badge badge-txt">abc</span>';
+    html += `<th>${esc(h)} ${badge}</th>`;
+  });
   html += '</tr></thead><tbody>';
-  rows.forEach(r => {
-    html += '<tr>';
-    state.externalHeaders.forEach(h => html += `<td>${esc(String(r[h] ?? ''))}</td>`);
+  S.rawData.slice(0, 50).forEach((r, i) => {
+    html += `<tr><td class="row-num">${i + 1}</td>`;
+    S.headers.forEach(h => html += `<td>${esc(String(r[h] ?? ''))}</td>`);
     html += '</tr>';
   });
-  html += '</tbody></table>';
-  html += `<p style="color:var(--text-dim);font-size:13px">${state.externalData.length} filas detectadas</p>`;
-  html += '<button class="btn btn-primary" style="margin-top:12px" onclick="goToMapping()">Continuar al mapeo →</button>';
-  document.getElementById('data-preview-table').innerHTML = html;
+  if (S.rawData.length > 50) html += `<tr><td colspan="${S.headers.length + 1}" style="text-align:center;color:var(--text-dim)">... y ${S.rawData.length - 50} filas más</td></tr>`;
+  html += '</tbody>';
+  document.getElementById('data-table').innerHTML = html;
 }
 
-function goToMapping() {
-  setDataStep(2);
-  const vars = ['{{nombre}}','{{estado}}','{{valor}}','{{fecha}}'];
-  let html = '';
-  state.externalHeaders.forEach(h => {
-    const opts = ['<option value="">— Sin mapear —</option>'].concat(vars.map(v => `<option value="${v}">${v}</option>`)).join('');
-    html += `<div class="mapping-row"><span class="field-name">${esc(h)}</span><select id="map-${h}">${opts}</select></div>`;
-  });
-  document.getElementById('mapping-list').innerHTML = html;
-}
-
-function applyMapping() {
-  state.mapping = {};
-  state.externalHeaders.forEach(h => {
-    const v = document.getElementById('map-' + h).value;
-    if (v) state.mapping[h] = v;
-  });
-  setDataStep(3);
-  showToast('Mapeo aplicado');
-}
-
-function selectDataMode(mode) {
-  state.selectedDataMode = mode;
-  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
-  event.currentTarget.classList.add('selected');
-}
-
-function executeDataMode() {
-  if (!state.selectedDataMode) { showToast('Seleccioná un modo', 'error'); return; }
-  const data = state.externalData;
-  const map = state.mapping;
-  const reverseMap = {};
-  Object.entries(map).forEach(([field, variable]) => reverseMap[variable] = field);
-
-  if (state.selectedDataMode === 'per-row') {
-    data.forEach(row => {
-      let content = '';
-      Object.entries(map).forEach(([field, variable]) => {
-        content += `${variable}: ${row[field] ?? ''}\n`;
-      });
-      addSlide({ type: 'content', title: String(row[state.externalHeaders[0]] || 'Slide'), content: content.trim(), chartType: 'bar', chartData: '' });
-    });
-    showToast(`${data.length} slides generados`);
-  } else if (state.selectedDataMode === 'table') {
-    addSlide({ type: 'table', title: 'Tabla resumen', content: JSON.stringify(data), chartType: 'bar', chartData: '' });
-    showToast('Slide de tabla generado');
-  } else if (state.selectedDataMode === 'chart') {
-    const numCols = state.externalHeaders.filter(h => data.every(r => !isNaN(Number(r[h]))));
-    const labelCol = state.externalHeaders.find(h => !numCols.includes(h)) || state.externalHeaders[0];
-    const labels = data.map(r => String(r[labelCol] || ''));
-    const datasets = numCols.slice(0, 4).map(col => ({ label: col, data: data.map(r => Number(r[col]) || 0) }));
-    const chartData = JSON.stringify({ labels, datasets });
-    addSlide({ type: 'chart', title: 'Gráfico automático', content: '', chartType: 'bar', chartData });
-    showToast('Slide de gráfico generado');
-  } else if (state.selectedDataMode === 'replace') {
-    const row = data[0];
-    state.slides.forEach(s => {
-      Object.entries(map).forEach(([field, variable]) => {
-        const val = String(row[field] ?? '');
-        if (s.title) s.title = s.title.split(variable).join(val);
-        if (s.content) s.content = s.content.split(variable).join(val);
-        if (s.left) s.left = s.left.split(variable).join(val);
-        if (s.right) s.right = s.right.split(variable).join(val);
-      });
-    });
-    renderSlideList();
-    showToast('Variables reemplazadas');
-  }
-  switchTab(1);
-}
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // ═══════════════════════════════════════════
-// PREVIEW (TAB 3)
+// CONFIG PANEL
 // ═══════════════════════════════════════════
-function renderPreview() {
-  if (!state.slides.length) {
-    document.getElementById('preview-slide').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim)">No hay slides. Agregá al menos uno en el Tab 2.</div>';
-    document.getElementById('preview-counter').textContent = '0 / 0';
+function refreshConfigPanel() {
+  if (!S.rawData.length) {
+    document.getElementById('no-data-msg').style.display = 'block';
+    document.getElementById('config-panel').style.display = 'none';
     return;
   }
-  if (state.previewIndex >= state.slides.length) state.previewIndex = 0;
-  const s = state.slides[state.previewIndex];
-  const c = getConfig();
-  const total = state.slides.length;
-  const num = state.previewIndex + 1;
-  document.getElementById('preview-counter').textContent = `${num} / ${total}`;
+  document.getElementById('no-data-msg').style.display = 'none';
+  document.getElementById('config-panel').style.display = 'block';
 
-  const el = document.getElementById('preview-slide');
-  const isCover = s.type === 'cover' || (state.previewIndex === 0 && s.type === 'cover');
-  const bgStyle = isCover && state.coverBase64
-    ? `background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.55)),url(${state.coverBase64}) center/cover;`
-    : `background:${isCover ? c.color1 : '#1e1e2e'};`;
+  // X axis select
+  const xSel = document.getElementById('x-axis');
+  xSel.innerHTML = S.headers.map(h => `<option value="${h}">${h} ${S.colTypes[h] === 'number' ? '(num)' : '(txt)'}</option>`).join('');
+  // Default to first text column
+  const firstTxt = S.headers.find(h => S.colTypes[h] === 'text');
+  if (firstTxt) xSel.value = firstTxt;
 
-  const logoHtml = state.logoBase64 ? `<img src="${state.logoBase64}">` : '';
-  const header = `<div class="ps-header" style="background:${c.color1}44">${logoHtml}<span style="color:${c.textColor}">${c.client}</span></div>`;
-  const footer = `<div class="ps-footer" style="background:${c.color1};color:${c.textColor}"><span>${c.author}</span><span>${c.date}</span><span>${num}</span></div>`;
+  // Y cols
+  const yDiv = document.getElementById('y-cols');
+  yDiv.innerHTML = '';
+  S.headers.filter(h => S.colTypes[h] === 'number').forEach((h, i) => {
+    yDiv.innerHTML += `<div class="col-item"><input type="checkbox" id="ycol-${i}" value="${h}" ${i < 2 ? 'checked' : ''}><span class="col-name">${h}</span><span class="col-type">numérica</span></div>`;
+  });
 
-  let body = '';
-  if (s.type === 'cover' || s.type === 'closing') {
-    body = `<div class="ps-body cover-body" style="${bgStyle}"><h2 style="color:${c.color2};font-size:32px">${esc(s.title || c.title)}</h2><p style="color:${c.textColor}">${esc(s.content || s.subtitle || c.subtitle)}</p></div>`;
-  } else if (s.type === 'content') {
-    const lines = (s.content || '').split('\n').filter(Boolean);
-    const listHtml = lines.map(l => `<li style="color:${c.textColor}">${esc(l)}</li>`).join('');
-    body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><ul>${listHtml}</ul></div>`;
-  } else if (s.type === 'two-columns') {
-    body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><div class="two-cols"><div style="color:${c.textColor}">${nl2br(esc(s.left || ''))}</div><div style="color:${c.textColor}">${nl2br(esc(s.right || ''))}</div></div></div>`;
-  } else if (s.type === 'quote') {
-    body = `<div class="ps-body" style="align-items:center"><blockquote style="color:${c.textColor};border-color:${c.color2}">${esc(s.content || '')}</blockquote><p style="color:${c.color2};margin-top:12px">— ${esc(s.title || '')}</p></div>`;
-  } else if (s.type === 'image') {
-    const img = s.imageBase64 ? `<img src="${s.imageBase64}" style="max-width:80%;max-height:70%;object-fit:contain;border-radius:8px">` : '<p style="color:var(--text-dim)">Sin imagen</p>';
-    body = `<div class="ps-body" style="align-items:center"><h2 style="color:${c.color2}">${esc(s.title)}</h2>${img}</div>`;
-  } else if (s.type === 'table') {
-    let tableData;
-    try { tableData = JSON.parse(s.content); } catch { tableData = []; }
-    if (tableData.length) {
-      const keys = Object.keys(tableData[0]);
-      let tbl = '<table class="data-table" style="font-size:11px;width:90%;margin:8px auto 0"><thead><tr>';
-      keys.forEach(k => tbl += `<th>${esc(k)}</th>`);
-      tbl += '</tr></thead><tbody>';
-      tableData.slice(0, 10).forEach(r => {
-        tbl += '<tr>';
-        keys.forEach(k => tbl += `<td>${esc(String(r[k] ?? ''))}</td>`);
-        tbl += '</tr>';
-      });
-      tbl += '</tbody></table>';
-      body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2>${tbl}</div>`;
-    } else {
-      body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><p style="color:var(--text-dim)">Sin datos de tabla</p></div>`;
-    }
-  } else if (s.type === 'chart') {
-    body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><div class="preview-chart-container"><canvas id="preview-chart-canvas"></canvas></div></div>`;
+  // Group by
+  const gb = document.getElementById('group-by');
+  gb.innerHTML = '<option value="">— Ninguno —</option>';
+  S.headers.filter(h => S.colTypes[h] === 'text').forEach(h => {
+    gb.innerHTML += `<option value="${h}">${h}</option>`;
+  });
+}
+
+function renderChartTypeBtns() {
+  const div = document.getElementById('chart-type-btns');
+  div.innerHTML = CHART_TYPES.map(t =>
+    `<button class="btn btn-sm ${t.id === S.selectedType ? 'btn-primary' : 'btn-secondary'}" onclick="selectChartType('${t.id}')">${t.icon} ${t.label}</button>`
+  ).join('');
+}
+
+function selectChartType(type) {
+  S.selectedType = type;
+  renderChartTypeBtns();
+}
+
+function renderPaletteOptions() {
+  const div = document.getElementById('palette-options');
+  div.innerHTML = PALETTES.map((p, pi) => {
+    const swatches = p.colors.slice(0, 6).map(c => `<div class="color-swatch" style="background:${c};width:20px;height:20px"></div>`).join('');
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;cursor:pointer;padding:8px;border-radius:8px;background:${pi === S.selectedPalette ? 'var(--surface3)' : 'transparent'};border:1px solid ${pi === S.selectedPalette ? 'var(--accent)' : 'transparent'}" onclick="selectPalette(${pi})">
+      <span style="font-size:13px;font-weight:600;width:60px">${p.name}</span>
+      <div style="display:flex;gap:3px">${swatches}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectPalette(idx) {
+  S.selectedPalette = idx;
+  renderPaletteOptions();
+}
+
+function setBgTheme(theme) {
+  S.bgTheme = theme;
+  ['dark','light','transparent'].forEach(t => {
+    const el = document.getElementById('bg-' + t);
+    if (el) el.className = 'btn btn-sm ' + (t === theme ? 'btn-primary' : 'btn-secondary');
+  });
+}
+
+// ═══════════════════════════════════════════
+// CHART BUILDING
+// ═══════════════════════════════════════════
+function getSelectedYCols() {
+  return Array.from(document.querySelectorAll('#y-cols input:checked')).map(cb => cb.value);
+}
+
+function buildChartConfig() {
+  const type = S.selectedType;
+  const xCol = document.getElementById('x-axis').value;
+  const yCols = getSelectedYCols();
+  const groupBy = document.getElementById('group-by').value;
+  const title = document.getElementById('chart-title').value || '';
+  const showLegend = document.getElementById('show-legend').value === 'true';
+  const showValues = document.getElementById('show-values').value === 'true';
+  const horiz = document.getElementById('orientation').value === 'horizontal';
+  const palette = PALETTES[S.selectedPalette].colors;
+  const bgTheme = S.bgTheme;
+
+  if (!yCols.length && !['scatter','bubble'].includes(type)) {
+    showToast('Seleccioná al menos una columna numérica', 'error');
+    return null;
+  }
+
+  let labels, datasets;
+
+  if (groupBy && !['pie','doughnut','polarArea'].includes(type)) {
+    // Grouped data
+    const groups = {};
+    S.rawData.forEach(r => {
+      const g = String(r[groupBy] || 'Otro');
+      if (!groups[g]) groups[g] = {};
+      const lbl = String(r[xCol] || '');
+      if (!groups[g][lbl]) groups[g][lbl] = [];
+      yCols.forEach(yc => groups[g][lbl].push(Number(r[yc]) || 0));
+    });
+    const allLabels = [...new Set(S.rawData.map(r => String(r[xCol] || '')))];
+    labels = allLabels;
+    const groupNames = Object.keys(groups);
+    datasets = groupNames.map((gn, gi) => ({
+      label: gn,
+      data: allLabels.map(lbl => {
+        const vals = groups[gn][lbl] || [0];
+        return vals.reduce((a, b) => a + b, 0) / vals.length;
+      }),
+      backgroundColor: palette[gi % palette.length] + (type === 'line' ? '33' : 'cc'),
+      borderColor: palette[gi % palette.length],
+      borderWidth: type === 'line' ? 2 : 1,
+      fill: type === 'line' ? 'origin' : undefined,
+      tension: 0.3
+    }));
+  } else if (['pie','doughnut','polarArea'].includes(type)) {
+    labels = S.rawData.map(r => String(r[xCol] || ''));
+    const yCol = yCols[0];
+    datasets = [{
+      data: S.rawData.map(r => Number(r[yCol]) || 0),
+      backgroundColor: labels.map((_, i) => palette[i % palette.length] + 'cc'),
+      borderColor: labels.map((_, i) => palette[i % palette.length]),
+      borderWidth: 2
+    }];
+  } else if (type === 'scatter') {
+    const yCol = yCols[0] || S.headers.find(h => S.colTypes[h] === 'number');
+    labels = [];
+    datasets = [{
+      label: `${xCol} vs ${yCol}`,
+      data: S.rawData.map(r => ({ x: Number(r[xCol]) || 0, y: Number(r[yCol]) || 0 })),
+      backgroundColor: palette[0] + 'cc',
+      borderColor: palette[0],
+      pointRadius: 6
+    }];
+  } else if (type === 'bubble') {
+    const yCol = yCols[0] || S.headers.find(h => S.colTypes[h] === 'number');
+    const rCol = yCols[1] || yCol;
+    labels = [];
+    const maxR = Math.max(...S.rawData.map(r => Math.abs(Number(r[rCol]) || 1)));
+    datasets = [{
+      label: `${xCol} vs ${yCol}`,
+      data: S.rawData.map(r => ({
+        x: Number(r[xCol]) || 0,
+        y: Number(r[yCol]) || 0,
+        r: (Math.abs(Number(r[rCol]) || 1) / maxR) * 20 + 3
+      })),
+      backgroundColor: palette[0] + '88',
+      borderColor: palette[0]
+    }];
   } else {
-    const lines = (s.content || '').split('\n').filter(Boolean);
-    const listHtml = lines.map(l => `<li style="color:${c.textColor}">${esc(l)}</li>`).join('');
-    body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><ul>${listHtml}</ul></div>`;
+    labels = S.rawData.map(r => String(r[xCol] || ''));
+    datasets = yCols.map((yc, yi) => ({
+      label: yc,
+      data: S.rawData.map(r => Number(r[yc]) || 0),
+      backgroundColor: type === 'line' ? palette[yi % palette.length] + '33' : palette[yi % palette.length] + 'cc',
+      borderColor: palette[yi % palette.length],
+      borderWidth: type === 'line' ? 2 : 1,
+      fill: type === 'line' ? 'origin' : undefined,
+      tension: 0.3
+    }));
   }
 
-  el.innerHTML = header + body + footer;
+  // Handle horizontal bar
+  let realType = type;
+  const indexAxis = (type === 'bar' && horiz) ? 'y' : undefined;
 
-  if (s.type === 'chart') {
-    setTimeout(() => renderPreviewChart(s), 50);
-  }
-}
+  const textColor = bgTheme === 'light' ? '#333' : '#ddd';
+  const gridColor = bgTheme === 'light' ? '#e0e0e0' : '#333';
 
-function renderPreviewChart(s) {
-  const canvas = document.getElementById('preview-chart-canvas');
-  if (!canvas) return;
-  let data;
-  try { data = JSON.parse(s.chartData); } catch { return; }
-  if (!data.labels || !data.datasets) return;
-  const colors = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899'];
-  data.datasets.forEach((ds, di) => {
-    if (!ds.backgroundColor) {
-      ds.backgroundColor = s.chartType === 'pie' ? colors : colors[di % colors.length];
-      ds.borderColor = s.chartType === 'line' ? colors[di % colors.length] : undefined;
+  const isPieType = ['pie','doughnut','polarArea'].includes(type);
+
+  const config = {
+    type: realType,
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis,
+      animation: { duration: 800, easing: 'easeOutQuart' },
+      plugins: {
+        title: title ? { display: true, text: title, color: textColor, font: { size: 18, weight: 'bold' } } : { display: false },
+        legend: { display: showLegend, labels: { color: textColor, font: { size: 13 } } },
+        tooltip: { backgroundColor: 'rgba(0,0,0,.8)', titleFont: { size: 14 }, bodyFont: { size: 13 }, padding: 12, cornerRadius: 8 }
+      },
+      scales: isPieType ? {} : {
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor } }
+      }
     }
-  });
-  if (chartInstances['preview']) chartInstances['preview'].destroy();
-  chartInstances['preview'] = new Chart(canvas, { type: s.chartType === 'radar' ? 'radar' : s.chartType, data, options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { color: '#ccc' } } }, scales: s.chartType === 'pie' ? {} : { x: { ticks: { color: '#999' } }, y: { ticks: { color: '#999' } } } } });
-}
+  };
 
-function prevPreview() { if (state.previewIndex > 0) { state.previewIndex--; renderPreview(); } }
-function nextPreview() { if (state.previewIndex < state.slides.length - 1) { state.previewIndex++; renderPreview(); } }
-
-function nl2br(s) { return s.replace(/\n/g, '<br>'); }
-
-// ═══════════════════════════════════════════
-// CLAUDE TAB (TAB 4)
-// ═══════════════════════════════════════════
-function goClaudeStep(n) {
-  document.querySelectorAll('.claude-step').forEach((el, i) => el.classList.toggle('active', i === n - 1));
-  [1,2,3].forEach(s => {
-    document.getElementById('cs-' + s).className = 'step' + (s < n ? ' done' : s === n ? ' active' : '');
-  });
-
-  if (n === 2) {
-    const brief = document.getElementById('claude-brief').value.trim();
-    const countSel = document.getElementById('claude-count').value;
-    const count = countSel === 'custom' ? document.getElementById('claude-custom-count').value : countSel;
-    const tipo = document.getElementById('claude-type').value;
-
-    const prompt = `Generá una presentación de ${count} slides sobre el siguiente tema:\n${brief}\n\nTipo: ${tipo}\n\nRespondé ÚNICAMENTE con un JSON válido, sin texto antes ni después, con este formato exacto:\n[\n  { "type": "cover", "title": "Título principal", "subtitle": "Subtítulo" },\n  { "type": "content", "title": "Título", "content": "Línea 1\\nLínea 2\\nLínea 3" },\n  { "type": "two-columns", "title": "Título", "left": "Columna izquierda", "right": "Columna derecha" },\n  { "type": "quote", "title": "Fuente", "content": "Texto de la cita" },\n  { "type": "chart", "title": "Título", "chartType": "bar", "chartData": { "labels": ["A","B","C"], "datasets": [{ "label": "Serie", "data": [10,20,15] }] } },\n  { "type": "closing", "title": "Cierre", "content": "Texto final" }\n]\nEl primer slide siempre debe ser type "cover" y el último "closing".\nUsá los tipos más apropiados para cada sección.`;
-
-    document.getElementById('claude-prompt').textContent = prompt;
+  // Data labels plugin (simple)
+  if (showValues && !isPieType) {
+    config.options.plugins.datalabels = { display: true };
   }
+
+  return { config, meta: { title, type, xCol, yCols, groupBy, palette: S.selectedPalette, bgTheme, horiz, showLegend, showValues } };
 }
 
-function copyPrompt() {
-  const text = document.getElementById('claude-prompt').textContent;
-  navigator.clipboard.writeText(text).then(() => showToast('Prompt copiado al portapapeles'));
+function previewChart() {
+  const result = buildChartConfig();
+  if (!result) return;
+
+  const wrap = document.getElementById('preview-wrap');
+  wrap.style.display = 'block';
+  setBgForWrap(wrap, result.meta.bgTheme);
+
+  const canvas = document.getElementById('preview-canvas');
+  if (previewChartInstance) { previewChartInstance.destroy(); previewChartInstance = null; }
+  previewChartInstance = new Chart(canvas, result.config);
 }
 
-function loadClaudeSlides() {
-  const raw = document.getElementById('claude-response').value.trim();
-  const status = document.getElementById('claude-status');
-  try {
-    // Try to extract JSON array from the response
-    let jsonStr = raw;
-    const match = raw.match(/\[[\s\S]*\]/);
-    if (match) jsonStr = match[0];
-    const slides = JSON.parse(jsonStr);
-    if (!Array.isArray(slides) || !slides.length) throw new Error('No es un array');
+function createChart() {
+  const result = buildChartConfig();
+  if (!result) return;
 
-    state.slides = [];
-    slides.forEach(s => {
-      const slide = {
-        type: s.type || 'content',
-        title: s.title || '',
-        content: s.content || s.subtitle || '',
-        left: s.left || '',
-        right: s.right || '',
-        chartType: s.chartType || 'bar',
-        chartData: s.chartData ? (typeof s.chartData === 'string' ? s.chartData : JSON.stringify(s.chartData)) : '',
-        imageBase64: null
-      };
-      state.slides.push(slide);
-    });
+  const id = 'chart-' + Date.now();
+  S.charts.push({ id, ...result });
+  showToast('Gráfico creado');
+  switchTab(2);
+}
 
-    renderSlideList();
-    status.style.color = 'var(--success)';
-    status.textContent = `${state.slides.length} slides cargados correctamente.`;
-    showToast(`${state.slides.length} slides cargados`);
-    setTimeout(() => switchTab(3), 800);
-  } catch (e) {
-    status.style.color = 'var(--danger)';
-    status.textContent = 'JSON inválido — revisá que hayas copiado la respuesta completa.';
-    showToast('JSON inválido', 'error');
-  }
+function setBgForWrap(el, theme) {
+  if (theme === 'dark') el.style.background = 'var(--surface2)';
+  else if (theme === 'light') el.style.background = '#ffffff';
+  else el.style.background = 'transparent';
 }
 
 // ═══════════════════════════════════════════
-// PPTX GENERATION
+// CHARTS LIST
 // ═══════════════════════════════════════════
-async function generatePPTX() {
-  if (!state.slides.length) { showToast('No hay slides para generar', 'error'); return; }
+function renderChartsList() {
+  const list = document.getElementById('charts-list');
+  document.getElementById('no-charts').style.display = S.charts.length ? 'none' : 'block';
+  list.innerHTML = '';
 
-  const c = getConfig();
-  const pptx = new PptxGenJS();
-  pptx.defineLayout({ name: 'CUSTOM', width: 10, height: 5.625 });
-  pptx.layout = 'CUSTOM';
+  // Destroy old instances
+  Object.values(chartInstances).forEach(ci => ci.destroy());
+  chartInstances = {};
 
-  const hex = v => v.replace('#', '');
+  S.charts.forEach((ch, i) => {
+    const card = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `
+      <div class="chart-card-header">
+        <h3>${esc(ch.meta.title || `Gráfico ${i + 1}`)} <span style="font-weight:400;color:var(--text-dim);font-size:12px">(${ch.meta.type})</span></h3>
+        <div class="btn-group">
+          <button class="btn btn-sm btn-secondary" onclick="duplicateChart(${i})">Duplicar</button>
+          <button class="btn btn-sm btn-danger" onclick="removeChart(${i})">Eliminar</button>
+        </div>
+      </div>
+      <div class="chart-card-body" id="card-body-${ch.id}">
+        <div style="position:relative;height:350px"><canvas id="canvas-${ch.id}"></canvas></div>
+      </div>`;
+    list.appendChild(card);
 
-  // Render chart images first
-  const chartImages = {};
-  for (let i = 0; i < state.slides.length; i++) {
-    const s = state.slides[i];
-    if (s.type === 'chart' && s.chartData) {
-      chartImages[i] = await renderChartToImage(s);
-    }
-  }
-
-  state.slides.forEach((s, idx) => {
-    const slide = pptx.addSlide();
-    const isCover = s.type === 'cover';
-    const isClosing = s.type === 'closing';
-
-    // Background
-    if (isCover && state.coverBase64) {
-      slide.addImage({ data: state.coverBase64, x: 0, y: 0, w: 10, h: 5.625 });
-      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 5.625, fill: { color: '000000', transparency: 50 } });
-    } else if (isCover || isClosing) {
-      slide.background = { color: hex(c.color1) };
-    } else {
-      slide.background = { color: 'F5F5F5' };
-    }
-
-    // Header (not on cover)
-    if (!isCover) {
-      if (state.logoBase64) {
-        slide.addImage({ data: state.logoBase64, x: 0.3, y: 0.15, w: 0.8, h: 0.4, sizing: { type: 'contain', w: 0.8, h: 0.4 } });
-      }
-      slide.addText(c.client, { x: 7, y: 0.15, w: 2.7, h: 0.4, align: 'right', fontSize: 9, color: '666666' });
-    }
-
-    // Footer
-    const footerY = 5.2;
-    slide.addText(c.author, { x: 0.3, y: footerY, w: 3, h: 0.35, fontSize: 8, color: isCover || isClosing ? hex(c.textColor) : '888888' });
-    slide.addText(c.date, { x: 4, y: footerY, w: 2, h: 0.35, align: 'center', fontSize: 8, color: isCover || isClosing ? hex(c.textColor) : '888888' });
-    slide.addText(String(idx + 1), { x: 8.5, y: footerY, w: 1.2, h: 0.35, align: 'right', fontSize: 8, color: isCover || isClosing ? hex(c.textColor) : '888888' });
-
-    // Content based on type
-    if (isCover || isClosing) {
-      slide.addText(s.title || c.title, {
-        x: 1, y: 1.5, w: 8, h: 1.2,
-        fontSize: 36, bold: true, align: 'center',
-        color: hex(c.color2),
-        presenceProps: { name: 'title-anim', stIdx: 0, animType: 'appear', animDelay: 0 }
-      });
-      slide.addText(s.content || s.subtitle || c.subtitle, {
-        x: 1, y: 2.8, w: 8, h: 0.8,
-        fontSize: 18, align: 'center',
-        color: hex(c.textColor),
-        presenceProps: { name: 'sub-anim', stIdx: 1, animType: 'appear', animDelay: 300 }
-      });
-    } else if (s.type === 'content') {
-      slide.addText(s.title, {
-        x: 0.5, y: 0.7, w: 9, h: 0.6,
-        fontSize: 24, bold: true, color: hex(c.color2)
-      });
-      const lines = (s.content || '').split('\n').filter(Boolean);
-      const bodyObjs = lines.map(l => ({ text: l, options: { bullet: true, fontSize: 16, color: hex(c.textColor), breakLine: true, paraSpaceAfter: 6 } }));
-      if (bodyObjs.length) {
-        slide.addText(bodyObjs, { x: 0.7, y: 1.5, w: 8.6, h: 3.2 });
-      }
-    } else if (s.type === 'two-columns') {
-      slide.addText(s.title, { x: 0.5, y: 0.7, w: 9, h: 0.6, fontSize: 24, bold: true, color: hex(c.color2) });
-      const leftLines = (s.left || '').split('\n').filter(Boolean).map(l => ({ text: l, options: { bullet: true, fontSize: 14, color: '333333', breakLine: true } }));
-      const rightLines = (s.right || '').split('\n').filter(Boolean).map(l => ({ text: l, options: { bullet: true, fontSize: 14, color: '333333', breakLine: true } }));
-      if (leftLines.length) slide.addText(leftLines, { x: 0.5, y: 1.5, w: 4.2, h: 3.2 });
-      if (rightLines.length) slide.addText(rightLines, { x: 5.3, y: 1.5, w: 4.2, h: 3.2 });
-      slide.addShape(pptx.ShapeType.line, { x: 5, y: 1.5, w: 0, h: 3, line: { color: 'CCCCCC', width: 1 } });
-    } else if (s.type === 'quote') {
-      slide.addShape(pptx.ShapeType.rect, { x: 1.5, y: 1.2, w: 0.08, h: 2.5, fill: { color: hex(c.color2) } });
-      slide.addText(s.content || '', { x: 1.8, y: 1.2, w: 6.5, h: 2.5, fontSize: 22, italic: true, color: '333333' });
-      slide.addText('— ' + (s.title || ''), { x: 1.8, y: 3.8, w: 6.5, h: 0.5, fontSize: 14, color: hex(c.color2) });
-    } else if (s.type === 'image') {
-      slide.addText(s.title, { x: 0.5, y: 0.7, w: 9, h: 0.6, fontSize: 24, bold: true, color: hex(c.color2) });
-      if (s.imageBase64) {
-        slide.addImage({ data: s.imageBase64, x: 1.5, y: 1.5, w: 7, h: 3.5, sizing: { type: 'contain', w: 7, h: 3.5 } });
-      }
-    } else if (s.type === 'table') {
-      slide.addText(s.title, { x: 0.5, y: 0.7, w: 9, h: 0.6, fontSize: 24, bold: true, color: hex(c.color2) });
-      let tableData;
-      try { tableData = JSON.parse(s.content); } catch { tableData = []; }
-      if (tableData.length) {
-        const keys = Object.keys(tableData[0]);
-        const headerRow = keys.map(k => ({ text: k, options: { bold: true, fontSize: 10, color: 'FFFFFF', fill: { color: hex(c.color1) } } }));
-        const rows = [headerRow];
-        tableData.slice(0, 15).forEach((r, ri) => {
-          rows.push(keys.map(k => ({ text: String(r[k] ?? ''), options: { fontSize: 9, fill: { color: ri % 2 === 0 ? 'F0F0F0' : 'FFFFFF' } } })));
-        });
-        slide.addTable(rows, { x: 0.5, y: 1.5, w: 9, colW: keys.map(() => 9 / keys.length), border: { pt: 0.5, color: 'CCCCCC' } });
-      }
-    } else if (s.type === 'chart') {
-      slide.addText(s.title, { x: 0.5, y: 0.7, w: 9, h: 0.6, fontSize: 24, bold: true, color: hex(c.color2) });
-      if (chartImages[idx]) {
-        slide.addImage({ data: chartImages[idx], x: 1, y: 1.4, w: 8, h: 3.8, sizing: { type: 'contain', w: 8, h: 3.8 } });
-      }
-    }
-  });
-
-  const fileName = (c.title || 'presentacion').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '').replace(/ +/g, '_');
-  pptx.writeFile({ fileName: fileName + '.pptx' }).then(() => {
-    showToast('PPTX generado correctamente');
-  }).catch(err => {
-    console.error(err);
-    showToast('Error al generar PPTX', 'error');
-  });
-}
-
-function renderChartToImage(s) {
-  return new Promise(resolve => {
-    const container = document.getElementById('hidden-charts');
-    const canvas = document.createElement('canvas');
-    canvas.width = 800;
-    canvas.height = 400;
-    container.appendChild(canvas);
-
-    let data;
-    try { data = JSON.parse(s.chartData); } catch { resolve(null); return; }
-    if (!data.labels || !data.datasets) { resolve(null); return; }
-
-    const colors = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899'];
-    const dataCopy = JSON.parse(JSON.stringify(data));
-    dataCopy.datasets.forEach((ds, di) => {
-      if (!ds.backgroundColor) {
-        ds.backgroundColor = s.chartType === 'pie' ? colors.slice(0, dataCopy.labels.length) : colors[di % colors.length];
-        ds.borderColor = s.chartType === 'line' ? colors[di % colors.length] : undefined;
-        if (s.chartType === 'line') ds.fill = false;
-      }
-    });
-
-    const chart = new Chart(canvas, {
-      type: s.chartType === 'radar' ? 'radar' : s.chartType,
-      data: dataCopy,
-      options: {
-        responsive: false,
-        animation: false,
-        plugins: { legend: { labels: { font: { size: 14 } } } },
-        scales: s.chartType === 'pie' ? {} : {
-          x: { ticks: { font: { size: 12 } } },
-          y: { ticks: { font: { size: 12 } } }
-        }
-      }
-    });
+    const body = document.getElementById('card-body-' + ch.id);
+    setBgForWrap(body, ch.meta.bgTheme);
 
     setTimeout(() => {
-      const imgData = canvas.toDataURL('image/png');
-      chart.destroy();
-      container.removeChild(canvas);
-      resolve(imgData);
-    }, 200);
+      const canvas = document.getElementById('canvas-' + ch.id);
+      if (canvas) {
+        const cfg = JSON.parse(JSON.stringify(ch.config));
+        cfg.options.animation = false;
+        chartInstances[ch.id] = new Chart(canvas, cfg);
+      }
+    }, 50);
   });
+}
+
+function removeChart(i) {
+  const ch = S.charts[i];
+  if (chartInstances[ch.id]) { chartInstances[ch.id].destroy(); delete chartInstances[ch.id]; }
+  S.charts.splice(i, 1);
+  renderChartsList();
+  showToast('Gráfico eliminado');
+}
+
+function duplicateChart(i) {
+  const copy = JSON.parse(JSON.stringify(S.charts[i]));
+  copy.id = 'chart-' + Date.now();
+  copy.meta.title = (copy.meta.title || 'Gráfico') + ' (copia)';
+  S.charts.push(copy);
+  renderChartsList();
+  showToast('Gráfico duplicado');
+}
+
+// ═══════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════
+function renderDashboard() {
+  const grid = document.getElementById('dashboard-grid');
+  document.getElementById('no-dash').style.display = S.charts.length ? 'none' : 'block';
+  grid.innerHTML = '';
+  grid.className = 'dashboard-grid' + (S.dashLayout === 'single' ? ' single' : '');
+
+  // Destroy previous
+  Object.keys(chartInstances).filter(k => k.startsWith('dash-')).forEach(k => {
+    chartInstances[k].destroy(); delete chartInstances[k];
+  });
+
+  S.charts.forEach((ch, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'chart-canvas-wrap';
+    setBgForWrap(cell, ch.meta.bgTheme);
+    cell.innerHTML = `<div style="position:relative;height:300px"><canvas id="dash-canvas-${i}"></canvas></div>`;
+    grid.appendChild(cell);
+
+    setTimeout(() => {
+      const canvas = document.getElementById('dash-canvas-' + i);
+      if (canvas) {
+        const cfg = JSON.parse(JSON.stringify(ch.config));
+        cfg.options.animation = false;
+        chartInstances['dash-' + i] = new Chart(canvas, cfg);
+      }
+    }, 50);
+  });
+}
+
+function setDashboardLayout(layout) {
+  S.dashLayout = layout;
+  renderDashboard();
+}
+
+// ═══════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════
+let exportChartInstance = null;
+
+function refreshExportPanel() {
+  const hasCharts = S.charts.length > 0;
+  document.getElementById('no-export').style.display = hasCharts ? 'none' : 'block';
+  document.getElementById('export-panel').style.display = hasCharts ? 'block' : 'none';
+  if (!hasCharts) return;
+
+  const sel = document.getElementById('export-select');
+  sel.innerHTML = S.charts.map((ch, i) => `<option value="${i}">${ch.meta.title || 'Gráfico ' + (i + 1)}</option>`).join('');
+  sel.onchange = () => renderExportPreview();
+  renderExportPreview();
+}
+
+function renderExportPreview() {
+  const idx = +document.getElementById('export-select').value;
+  const ch = S.charts[idx];
+  if (!ch) return;
+
+  const canvas = document.getElementById('export-preview');
+  const wrap = canvas.parentElement;
+  setBgForWrap(wrap, ch.meta.bgTheme);
+
+  if (exportChartInstance) { exportChartInstance.destroy(); exportChartInstance = null; }
+  const cfg = JSON.parse(JSON.stringify(ch.config));
+  cfg.options.animation = false;
+  exportChartInstance = new Chart(canvas, cfg);
+}
+
+function exportAs(format) {
+  const idx = +document.getElementById('export-select').value;
+  const ch = S.charts[idx];
+  if (!ch) return;
+
+  if (format === 'json') {
+    downloadText(JSON.stringify({ config: ch.config, meta: ch.meta, data: S.rawData }, null, 2), (ch.meta.title || 'chart') + '.json', 'application/json');
+    showToast('JSON descargado');
+    return;
+  }
+
+  if (format === 'csv') {
+    const labels = ch.config.data.labels || [];
+    const datasets = ch.config.data.datasets || [];
+    let csv = 'Label,' + datasets.map(ds => ds.label || 'Serie').join(',') + '\n';
+    labels.forEach((l, i) => {
+      csv += l + ',' + datasets.map(ds => (ds.data && ds.data[i] !== undefined) ? (typeof ds.data[i] === 'object' ? JSON.stringify(ds.data[i]) : ds.data[i]) : '').join(',') + '\n';
+    });
+    downloadText(csv, (ch.meta.title || 'chart') + '.csv', 'text/csv');
+    showToast('CSV descargado');
+    return;
+  }
+
+  // Image export
+  const offscreen = document.createElement('canvas');
+  offscreen.width = 1600; offscreen.height = 900;
+  const ctx = offscreen.getContext('2d');
+
+  // Background
+  if (ch.meta.bgTheme === 'dark') { ctx.fillStyle = '#12121a'; ctx.fillRect(0, 0, 1600, 900); }
+  else if (ch.meta.bgTheme === 'light') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 1600, 900); }
+
+  const cfg = JSON.parse(JSON.stringify(ch.config));
+  cfg.options.responsive = false;
+  cfg.options.animation = false;
+
+  const tempChart = new Chart(offscreen, cfg);
+
+  setTimeout(() => {
+    if (format === 'svg') {
+      // Can't do real SVG from canvas, export as PNG with note
+      const dataUrl = offscreen.toDataURL('image/png', 1.0);
+      downloadDataUrl(dataUrl, (ch.meta.title || 'chart') + '.png');
+      showToast('Exportado como PNG (SVG no disponible desde Canvas)');
+    } else if (format === 'png') {
+      const dataUrl = offscreen.toDataURL('image/png', 1.0);
+      downloadDataUrl(dataUrl, (ch.meta.title || 'chart') + '.png');
+      showToast('PNG descargado');
+    } else if (format === 'jpg') {
+      if (ch.meta.bgTheme === 'transparent') {
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 1600, 900);
+      }
+      const dataUrl = offscreen.toDataURL('image/jpeg', 0.95);
+      downloadDataUrl(dataUrl, (ch.meta.title || 'chart') + '.jpg');
+      showToast('JPG descargado');
+    }
+    tempChart.destroy();
+  }, 300);
+}
+
+function exportAllPng() {
+  S.charts.forEach((ch, i) => {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = 1600; offscreen.height = 900;
+    const ctx = offscreen.getContext('2d');
+    if (ch.meta.bgTheme === 'dark') { ctx.fillStyle = '#12121a'; ctx.fillRect(0, 0, 1600, 900); }
+    else if (ch.meta.bgTheme === 'light') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 1600, 900); }
+
+    const cfg = JSON.parse(JSON.stringify(ch.config));
+    cfg.options.responsive = false;
+    cfg.options.animation = false;
+    const tempChart = new Chart(offscreen, cfg);
+
+    setTimeout(() => {
+      const dataUrl = offscreen.toDataURL('image/png', 1.0);
+      downloadDataUrl(dataUrl, (ch.meta.title || 'chart-' + (i + 1)) + '.png');
+      tempChart.destroy();
+    }, 300 + i * 200);
+  });
+  showToast(`Exportando ${S.charts.length} gráficos...`);
+}
+
+function downloadText(text, filename, mime) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const a = document.createElement('a'); a.href = dataUrl; a.download = filename; a.click();
 }
 </script>
 </body>
