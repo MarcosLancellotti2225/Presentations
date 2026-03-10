@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PowerPoint Generator</title>
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--surface3:#2e2e2e;--border:#333;--text:#e0e0e0;--text-dim:#888;--accent:#6366f1;--accent-hover:#818cf8;--danger:#ef4444;--success:#22c55e;--radius:8px}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--surface)}
+::-webkit-scrollbar-thumb{background:#444;border-radius:3px}
+button{cursor:pointer;font-family:inherit;border:none;outline:none;transition:all .2s}
+input,textarea,select{font-family:inherit;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:8px 12px;outline:none;transition:border-color .2s}
+input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+textarea{resize:vertical}
+label{font-size:13px;color:var(--text-dim);font-weight:500;display:block;margin-bottom:4px}
+
+/* Sidebar */
+.sidebar{width:220px;min-width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0}
+.sidebar h1{font-size:16px;font-weight:700;padding:0 20px 20px;border-bottom:1px solid var(--border);color:#fff}
+.sidebar h1 span{color:var(--accent)}
+.tab-btn{display:flex;align-items:center;gap:10px;padding:12px 20px;background:none;color:var(--text-dim);font-size:14px;font-weight:500;text-align:left;width:100%;transition:all .2s;border-left:3px solid transparent}
+.tab-btn:hover{background:var(--surface2);color:var(--text)}
+.tab-btn.active{color:#fff;background:var(--surface2);border-left-color:var(--accent)}
+.tab-btn .icon{font-size:18px;width:24px;text-align:center}
+
+/* Main */
+.main{flex:1;overflow-y:auto;padding:32px 40px}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.section-title{font-size:22px;font-weight:700;margin-bottom:24px;color:#fff}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.form-group{margin-bottom:16px}
+.form-group input,.form-group textarea,.form-group select{width:100%}
+.color-row{display:flex;gap:16px;margin-bottom:16px}
+.color-group{flex:1}
+.color-group input[type=color]{width:100%;height:40px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;padding:2px}
+.btn{padding:10px 20px;border-radius:var(--radius);font-size:14px;font-weight:600;transition:all .2s}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-secondary{background:var(--surface3);color:var(--text)}
+.btn-secondary:hover{background:#383838}
+.btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}
+.btn-danger:hover{background:var(--danger);color:#fff}
+.btn-success{background:var(--success);color:#fff}
+.btn-success:hover{background:#16a34a}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-icon{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;background:var(--surface3);color:var(--text-dim);font-size:14px}
+.btn-icon:hover{background:#383838;color:#fff}
+
+/* Upload area */
+.upload-area{border:2px dashed var(--border);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2)}
+.upload-area:hover{border-color:var(--accent);background:rgba(99,102,241,.05)}
+.upload-area input{display:none}
+.upload-area p{color:var(--text-dim);font-size:13px;margin-top:4px}
+.upload-preview{max-width:120px;max-height:60px;margin-top:8px;border-radius:4px}
+
+/* Mini slide preview */
+.mini-preview{width:100%;max-width:480px;aspect-ratio:16/9;border-radius:8px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.5);margin-top:20px;position:relative;display:flex;flex-direction:column}
+.mini-preview .mp-header{height:12%;display:flex;align-items:center;justify-content:space-between;padding:0 5%}
+.mini-preview .mp-header img{height:70%;object-fit:contain}
+.mini-preview .mp-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5%}
+.mini-preview .mp-body h2{font-size:18px;margin-bottom:4px}
+.mini-preview .mp-body p{font-size:12px}
+.mini-preview .mp-footer{height:10%;display:flex;align-items:center;justify-content:space-between;padding:0 5%;font-size:9px;opacity:.7}
+
+/* Slide cards */
+.slide-list{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.slide-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;transition:all .2s;cursor:grab}
+.slide-card:active{cursor:grabbing}
+.slide-card.dragging{opacity:.4;border-color:var(--accent)}
+.slide-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.slide-card-header .slide-num{font-size:12px;color:var(--accent);font-weight:700}
+.slide-card-header .slide-actions{display:flex;gap:6px}
+.slide-card .form-row{margin-bottom:8px}
+.chart-preview-container{width:100%;max-width:400px;aspect-ratio:16/10;margin-top:8px;background:var(--surface);border-radius:6px;padding:8px}
+
+/* Data tab */
+.step-indicator{display:flex;gap:8px;margin-bottom:24px}
+.step{flex:1;padding:10px;text-align:center;background:var(--surface2);border-radius:var(--radius);font-size:13px;font-weight:600;color:var(--text-dim);border:1px solid var(--border)}
+.step.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.step.done{background:var(--success);color:#fff;border-color:var(--success)}
+.data-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px}
+.data-table th,.data-table td{padding:8px 12px;border:1px solid var(--border);text-align:left}
+.data-table th{background:var(--surface3);color:var(--accent);font-weight:600}
+.data-table td{background:var(--surface2)}
+.mapping-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
+.mapping-row .field-name{flex:1;font-weight:600;font-size:14px}
+.mapping-row select{flex:1}
+.mode-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;cursor:pointer;transition:all .2s}
+.mode-card:hover{border-color:var(--accent)}
+.mode-card.selected{border-color:var(--accent);background:rgba(99,102,241,.1)}
+.mode-card h4{font-size:14px;margin-bottom:4px}
+.mode-card p{font-size:12px;color:var(--text-dim)}
+
+/* Preview */
+.preview-container{display:flex;flex-direction:column;align-items:center;gap:20px}
+.preview-slide{width:100%;max-width:800px;aspect-ratio:16/9;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.6);position:relative;display:flex;flex-direction:column}
+.preview-slide .ps-header{height:10%;display:flex;align-items:center;justify-content:space-between;padding:0 4%}
+.preview-slide .ps-header img{height:60%;object-fit:contain}
+.preview-slide .ps-header span{font-size:12px}
+.preview-slide .ps-body{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 6%}
+.preview-slide .ps-body.cover-body{align-items:center;text-align:center;justify-content:center}
+.preview-slide .ps-body h2{font-size:28px;margin-bottom:8px}
+.preview-slide .ps-body p,.preview-slide .ps-body li{font-size:15px;line-height:1.6}
+.preview-slide .ps-body ul{list-style:disc;padding-left:20px}
+.preview-slide .ps-body .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px;width:100%}
+.preview-slide .ps-body blockquote{font-size:20px;font-style:italic;border-left:4px solid;padding-left:16px;line-height:1.5}
+.preview-slide .ps-footer{height:8%;display:flex;align-items:center;justify-content:space-between;padding:0 4%;font-size:10px;opacity:.6}
+.preview-nav{display:flex;align-items:center;gap:16px}
+.preview-nav .btn{min-width:100px}
+.preview-nav span{font-size:14px;color:var(--text-dim)}
+.preview-chart-container{width:90%;max-height:60%;margin:0 auto}
+
+/* Claude tab */
+.claude-step{display:none}
+.claude-step.active{display:block}
+.prompt-area{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;font-family:'Fira Code',monospace;font-size:13px;line-height:1.6;max-height:400px;overflow-y:auto;white-space:pre-wrap;color:var(--text-dim);margin:16px 0}
+.toast{position:fixed;bottom:24px;right:24px;padding:12px 24px;border-radius:var(--radius);font-size:14px;font-weight:600;z-index:9999;transform:translateY(100px);opacity:0;transition:all .3s}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{background:var(--success);color:#fff}
+.toast.error{background:var(--danger);color:#fff}
+.cover-img-preview{max-width:200px;max-height:100px;margin-top:8px;border-radius:4px;object-fit:cover}
+.hidden-canvas{position:absolute;left:-9999px;top:-9999px}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <h1><span>PPT</span> Generator</h1>
+  <button class="tab-btn active" onclick="switchTab(0)"><span class="icon">⚙</span> Configuración</button>
+  <button class="tab-btn" onclick="switchTab(1)"><span class="icon">▦</span> Slides</button>
+  <button class="tab-btn" onclick="switchTab(2)"><span class="icon">📊</span> Datos Externos</button>
+  <button class="tab-btn" onclick="switchTab(3)"><span class="icon">👁</span> Preview & Export</button>
+  <button class="tab-btn" onclick="switchTab(4)"><span class="icon">✦</span> Generar con Claude</button>
+</aside>
+
+<main class="main">
+
+<!-- ═══════════ TAB 0: CONFIGURACIÓN ═══════════ -->
+<div class="tab-content active" id="tab-0">
+  <h2 class="section-title">Configuración</h2>
+  <div class="form-row">
+    <div class="form-group"><label>Título de la presentación</label><input id="cfg-title" value="Mi Presentación" oninput="updateMiniPreview()"></div>
+    <div class="form-group"><label>Subtítulo</label><input id="cfg-subtitle" value="Subtítulo aquí" oninput="updateMiniPreview()"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label>Nombre del cliente</label><input id="cfg-client" value="Cliente" oninput="updateMiniPreview()"></div>
+    <div class="form-group"><label>Nombre del autor</label><input id="cfg-author" value="Autor" oninput="updateMiniPreview()"></div>
+  </div>
+  <div class="form-group"><label>Fecha</label><input type="date" id="cfg-date" oninput="updateMiniPreview()"></div>
+
+  <div class="color-row">
+    <div class="color-group"><label>Color primario</label><input type="color" id="cfg-color1" value="#6366f1" oninput="updateMiniPreview()"></div>
+    <div class="color-group"><label>Color secundario</label><input type="color" id="cfg-color2" value="#818cf8" oninput="updateMiniPreview()"></div>
+    <div class="color-group"><label>Color de texto</label><input type="color" id="cfg-textcolor" value="#ffffff" oninput="updateMiniPreview()"></div>
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label>Logo (PNG/JPG)</label>
+      <div class="upload-area" onclick="this.querySelector('input').click()">
+        <input type="file" accept="image/png,image/jpeg" onchange="handleLogoUpload(event)">
+        <p>Click para subir logo</p>
+        <img id="logo-preview" class="upload-preview" style="display:none">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Imagen de portada (PNG/JPG)</label>
+      <div class="upload-area" onclick="this.querySelector('input').click()">
+        <input type="file" accept="image/png,image/jpeg" onchange="handleCoverUpload(event)">
+        <p>Click para subir imagen de portada</p>
+        <img id="cover-preview" class="cover-img-preview" style="display:none">
+      </div>
+    </div>
+  </div>
+
+  <label>Preview en tiempo real</label>
+  <div class="mini-preview" id="mini-preview"></div>
+</div>
+
+<!-- ═══════════ TAB 1: SLIDES ═══════════ -->
+<div class="tab-content" id="tab-1">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <h2 class="section-title" style="margin:0">Slides</h2>
+    <button class="btn btn-primary" onclick="addSlide()">+ Agregar slide</button>
+  </div>
+  <div class="slide-list" id="slide-list"></div>
+</div>
+
+<!-- ═══════════ TAB 2: DATOS EXTERNOS ═══════════ -->
+<div class="tab-content" id="tab-2">
+  <h2 class="section-title">Datos Externos</h2>
+  <div class="step-indicator">
+    <div class="step active" id="ds-1">1. Upload</div>
+    <div class="step" id="ds-2">2. Mapeo</div>
+    <div class="step" id="ds-3">3. Modo de uso</div>
+  </div>
+  <div id="data-step-1">
+    <div class="upload-area" onclick="this.querySelector('input').click()" style="margin-bottom:16px">
+      <input type="file" accept=".csv,.xlsx,.xls,.json" onchange="handleDataUpload(event)">
+      <p>Arrastrá o hacé click para subir CSV, XLSX o JSON</p>
+    </div>
+    <div id="data-preview-table"></div>
+  </div>
+  <div id="data-step-2" style="display:none">
+    <h3 style="margin-bottom:12px;font-size:16px">Mapeo de campos</h3>
+    <div id="mapping-list"></div>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="applyMapping()">Aplicar mapeo</button>
+  </div>
+  <div id="data-step-3" style="display:none">
+    <h3 style="margin-bottom:12px;font-size:16px">Modo de uso</h3>
+    <div class="mode-card" onclick="selectDataMode('per-row')"><h4>A. Un slide por fila</h4><p>Genera un slide Título+Contenido por cada fila usando la plantilla.</p></div>
+    <div class="mode-card" onclick="selectDataMode('table')"><h4>B. Tabla resumen</h4><p>Un slide con tabla mostrando todas las filas.</p></div>
+    <div class="mode-card" onclick="selectDataMode('chart')"><h4>C. Gráfico automático</h4><p>Detecta columnas numéricas y genera un gráfico de barras.</p></div>
+    <div class="mode-card" onclick="selectDataMode('replace')"><h4>D. Reemplazar variables</h4><p>Usa la primera fila para rellenar {{variables}} en los slides manuales.</p></div>
+    <button class="btn btn-success" style="margin-top:16px" onclick="executeDataMode()">Ejecutar</button>
+  </div>
+</div>
+
+<!-- ═══════════ TAB 3: PREVIEW & EXPORT ═══════════ -->
+<div class="tab-content" id="tab-3">
+  <h2 class="section-title">Preview & Export</h2>
+  <div class="preview-container">
+    <div class="preview-slide" id="preview-slide"></div>
+    <div class="preview-nav">
+      <button class="btn btn-secondary" onclick="prevPreview()">← Anterior</button>
+      <span id="preview-counter">0 / 0</span>
+      <button class="btn btn-secondary" onclick="nextPreview()">Siguiente →</button>
+    </div>
+    <button class="btn btn-primary" style="margin-top:12px;padding:14px 40px;font-size:16px" onclick="generatePPTX()">Generar PPTX</button>
+  </div>
+</div>
+
+<!-- ═══════════ TAB 4: GENERAR CON CLAUDE ═══════════ -->
+<div class="tab-content" id="tab-4">
+  <h2 class="section-title">Generar con Claude</h2>
+  <div class="step-indicator">
+    <div class="step active" id="cs-1">1. Brief</div>
+    <div class="step" id="cs-2">2. Prompt</div>
+    <div class="step" id="cs-3">3. Respuesta</div>
+  </div>
+
+  <div class="claude-step active" id="claude-step-1">
+    <div class="form-group"><label>Describí tu presentación</label><textarea id="claude-brief" rows="8" placeholder="Ej: Presentación comercial para empresa de logística..."></textarea></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Cantidad de slides</label>
+        <select id="claude-count">
+          <option value="5">5 slides</option>
+          <option value="8" selected>8 slides</option>
+          <option value="10">10 slides</option>
+          <option value="12">12 slides</option>
+          <option value="custom">Personalizado</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tipo de presentación</label>
+        <select id="claude-type">
+          <option>Propuesta comercial</option>
+          <option>Informe técnico</option>
+          <option>Onboarding</option>
+          <option>Resumen ejecutivo</option>
+          <option>Demo</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group" id="custom-count-group" style="display:none"><label>Cantidad personalizada</label><input type="number" id="claude-custom-count" min="3" max="30" value="8"></div>
+    <button class="btn btn-primary" onclick="goClaudeStep(2)">Generar prompt para Claude →</button>
+  </div>
+
+  <div class="claude-step" id="claude-step-2">
+    <label>Prompt generado (solo lectura)</label>
+    <div class="prompt-area" id="claude-prompt"></div>
+    <div style="display:flex;gap:12px">
+      <button class="btn btn-primary" onclick="copyPrompt()">Copiar prompt</button>
+      <button class="btn btn-secondary" onclick="goClaudeStep(3)">Siguiente →</button>
+      <button class="btn btn-secondary" onclick="goClaudeStep(1)">← Volver</button>
+    </div>
+  </div>
+
+  <div class="claude-step" id="claude-step-3">
+    <div class="form-group"><label>Pegá la respuesta JSON de Claude</label><textarea id="claude-response" rows="12" placeholder='[{ "type": "cover", "title": "...", ... }]'></textarea></div>
+    <div style="display:flex;gap:12px">
+      <button class="btn btn-success" onclick="loadClaudeSlides()">Cargar slides</button>
+      <button class="btn btn-secondary" onclick="goClaudeStep(2)">← Volver</button>
+    </div>
+    <p id="claude-status" style="margin-top:12px;font-size:14px"></p>
+  </div>
+</div>
+
+</main>
+
+<!-- Hidden canvases for chart rendering -->
+<div class="hidden-canvas" id="hidden-charts"></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+const state = {
+  config: {},
+  slides: [],
+  logoBase64: null,
+  coverBase64: null,
+  externalData: null,
+  externalHeaders: [],
+  mapping: {},
+  selectedDataMode: null,
+  previewIndex: 0
+};
+
+let chartInstances = {};
+let dragSrcIdx = null;
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('cfg-date').value = today;
+  document.getElementById('claude-count').addEventListener('change', e => {
+    document.getElementById('custom-count-group').style.display = e.target.value === 'custom' ? 'block' : 'none';
+  });
+  updateMiniPreview();
+});
+
+// ═══════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════
+function switchTab(idx) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+  document.querySelectorAll('.tab-content').forEach((c, i) => c.classList.toggle('active', i === idx));
+  if (idx === 3) renderPreview();
+}
+
+// ═══════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type;
+  setTimeout(() => t.classList.add('show'), 10);
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ═══════════════════════════════════════════
+// CONFIG helpers
+// ═══════════════════════════════════════════
+function getConfig() {
+  return {
+    title: document.getElementById('cfg-title').value,
+    subtitle: document.getElementById('cfg-subtitle').value,
+    client: document.getElementById('cfg-client').value,
+    author: document.getElementById('cfg-author').value,
+    date: document.getElementById('cfg-date').value,
+    color1: document.getElementById('cfg-color1').value,
+    color2: document.getElementById('cfg-color2').value,
+    textColor: document.getElementById('cfg-textcolor').value
+  };
+}
+
+function handleLogoUpload(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    state.logoBase64 = ev.target.result;
+    const p = document.getElementById('logo-preview');
+    p.src = ev.target.result; p.style.display = 'block';
+    updateMiniPreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleCoverUpload(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    state.coverBase64 = ev.target.result;
+    const p = document.getElementById('cover-preview');
+    p.src = ev.target.result; p.style.display = 'block';
+    updateMiniPreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+// ═══════════════════════════════════════════
+// MINI PREVIEW
+// ═══════════════════════════════════════════
+function updateMiniPreview() {
+  const c = getConfig();
+  const el = document.getElementById('mini-preview');
+  const logoHtml = state.logoBase64 ? `<img src="${state.logoBase64}" alt="logo">` : '';
+  const bgStyle = state.coverBase64
+    ? `background:linear-gradient(rgba(0,0,0,.5),rgba(0,0,0,.5)),url(${state.coverBase64}) center/cover;`
+    : `background:${c.color1};`;
+  el.innerHTML = `
+    <div class="mp-header" style="background:${c.color1}20">${logoHtml}<span style="color:${c.textColor};font-size:10px">${c.client}</span></div>
+    <div class="mp-body" style="${bgStyle}">
+      <h2 style="color:${c.color2}">${c.title || 'Título'}</h2>
+      <p style="color:${c.textColor}">${c.subtitle || 'Subtítulo'}</p>
+    </div>
+    <div class="mp-footer" style="background:${c.color1};color:${c.textColor}">
+      <span>${c.author}</span><span>${c.date}</span><span>1</span>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════
+// SLIDES
+// ═══════════════════════════════════════════
+const SLIDE_TYPES = [
+  { value: 'cover', label: 'Portada' },
+  { value: 'content', label: 'Título + Contenido' },
+  { value: 'two-columns', label: 'Dos columnas' },
+  { value: 'image', label: 'Solo imagen' },
+  { value: 'quote', label: 'Cita destacada' },
+  { value: 'table', label: 'Tabla de datos' },
+  { value: 'chart', label: 'Gráfico' },
+  { value: 'closing', label: 'Cierre' }
+];
+
+function addSlide(data) {
+  const s = data || { type: 'content', title: '', content: '', left: '', right: '', chartType: 'bar', chartData: '', imageBase64: null };
+  state.slides.push(s);
+  renderSlideList();
+}
+
+function removeSlide(i) {
+  state.slides.splice(i, 1);
+  renderSlideList();
+}
+
+function duplicateSlide(i) {
+  state.slides.splice(i + 1, 0, JSON.parse(JSON.stringify(state.slides[i])));
+  renderSlideList();
+}
+
+function renderSlideList() {
+  const list = document.getElementById('slide-list');
+  list.innerHTML = '';
+  state.slides.forEach((s, i) => {
+    const card = document.createElement('div');
+    card.className = 'slide-card';
+    card.draggable = true;
+    card.dataset.index = i;
+    card.addEventListener('dragstart', onDragStart);
+    card.addEventListener('dragover', onDragOver);
+    card.addEventListener('drop', onDrop);
+    card.addEventListener('dragend', onDragEnd);
+
+    const typeOpts = SLIDE_TYPES.map(t => `<option value="${t.value}" ${t.value === s.type ? 'selected' : ''}>${t.label}</option>`).join('');
+
+    let extra = '';
+    if (s.type === 'two-columns') {
+      extra = `
+        <div class="form-row">
+          <div class="form-group"><label>Columna izquierda</label><textarea rows="3" oninput="state.slides[${i}].left=this.value">${esc(s.left || '')}</textarea></div>
+          <div class="form-group"><label>Columna derecha</label><textarea rows="3" oninput="state.slides[${i}].right=this.value">${esc(s.right || '')}</textarea></div>
+        </div>`;
+    } else if (s.type === 'chart') {
+      extra = `
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipo de gráfico</label>
+            <select onchange="state.slides[${i}].chartType=this.value;renderChartPreview(${i})">
+              <option value="bar" ${s.chartType === 'bar' ? 'selected' : ''}>Barras</option>
+              <option value="line" ${s.chartType === 'line' ? 'selected' : ''}>Líneas</option>
+              <option value="pie" ${s.chartType === 'pie' ? 'selected' : ''}>Torta</option>
+              <option value="radar" ${s.chartType === 'radar' ? 'selected' : ''}>Área/Radar</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Datos JSON</label>
+          <textarea rows="4" id="chart-data-${i}" oninput="state.slides[${i}].chartData=this.value;renderChartPreview(${i})" placeholder='{"labels":["Ene","Feb"],"datasets":[{"label":"Ventas","data":[10,20]}]}'>${esc(s.chartData || '')}</textarea>
+        </div>
+        <div class="chart-preview-container"><canvas id="chart-canvas-${i}"></canvas></div>`;
+    } else if (s.type === 'image') {
+      extra = `
+        <div class="form-group">
+          <label>Imagen</label>
+          <div class="upload-area" onclick="this.querySelector('input').click()" style="padding:12px">
+            <input type="file" accept="image/*" onchange="handleSlideImage(event,${i})" style="display:none">
+            <p>Click para subir imagen</p>
+          </div>
+          ${s.imageBase64 ? `<img src="${s.imageBase64}" style="max-width:200px;margin-top:8px;border-radius:4px">` : ''}
+        </div>`;
+    } else if (s.type === 'table') {
+      extra = `
+        <div class="form-group">
+          <label>Datos de la tabla (JSON: array de objetos)</label>
+          <textarea rows="4" oninput="state.slides[${i}].content=this.value" placeholder='[{"Col1":"A","Col2":"B"},{"Col1":"C","Col2":"D"}]'>${esc(s.content || '')}</textarea>
+        </div>`;
+    } else {
+      extra = `
+        <div class="form-group"><label>Contenido</label><textarea rows="3" oninput="state.slides[${i}].content=this.value" placeholder="Soporte {{variables}}. Saltos de línea = bullets.">${esc(s.content || '')}</textarea></div>`;
+    }
+
+    card.innerHTML = `
+      <div class="slide-card-header">
+        <span class="slide-num">SLIDE ${i + 1}</span>
+        <div class="slide-actions">
+          <button class="btn-icon" title="Duplicar" onclick="duplicateSlide(${i})">⧉</button>
+          <button class="btn-icon" title="Eliminar" onclick="removeSlide(${i})" style="color:var(--danger)">✕</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Tipo</label><select onchange="state.slides[${i}].type=this.value;renderSlideList()">${typeOpts}</select></div>
+        <div class="form-group"><label>Título</label><input value="${esc(s.title || '')}" oninput="state.slides[${i}].title=this.value"></div>
+      </div>
+      ${extra}`;
+    list.appendChild(card);
+
+    if (s.type === 'chart' && s.chartData) {
+      setTimeout(() => renderChartPreview(i), 50);
+    }
+  });
+}
+
+function esc(str) { return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function handleSlideImage(e, idx) {
+  const file = e.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => { state.slides[idx].imageBase64 = ev.target.result; renderSlideList(); };
+  r.readAsDataURL(file);
+}
+
+// Drag & drop
+function onDragStart(e) {
+  dragSrcIdx = +e.currentTarget.dataset.index;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+function onDrop(e) {
+  e.preventDefault();
+  const dst = +e.currentTarget.dataset.index;
+  if (dragSrcIdx !== null && dragSrcIdx !== dst) {
+    const item = state.slides.splice(dragSrcIdx, 1)[0];
+    state.slides.splice(dst, 0, item);
+    renderSlideList();
+  }
+}
+function onDragEnd(e) { e.currentTarget.classList.remove('dragging'); dragSrcIdx = null; }
+
+// Chart preview in slide editor
+function renderChartPreview(idx) {
+  const s = state.slides[idx];
+  const canvasId = 'chart-canvas-' + idx;
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); delete chartInstances[canvasId]; }
+  let data;
+  try { data = JSON.parse(s.chartData); } catch { return; }
+  if (!data.labels || !data.datasets) return;
+  const colors = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899'];
+  data.datasets.forEach((ds, di) => {
+    if (!ds.backgroundColor) {
+      ds.backgroundColor = s.chartType === 'pie' ? colors : colors[di % colors.length];
+      ds.borderColor = s.chartType === 'line' ? colors[di % colors.length] : undefined;
+    }
+  });
+  chartInstances[canvasId] = new Chart(canvas, { type: s.chartType === 'radar' ? 'radar' : s.chartType, data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#ccc' } } }, scales: s.chartType === 'pie' ? {} : { x: { ticks: { color: '#999' } }, y: { ticks: { color: '#999' } } } } });
+}
+
+// ═══════════════════════════════════════════
+// DATA EXTERNAL (TAB 2)
+// ═══════════════════════════════════════════
+function setDataStep(n) {
+  [1,2,3].forEach(s => {
+    document.getElementById('ds-' + s).className = 'step' + (s < n ? ' done' : s === n ? ' active' : '');
+    document.getElementById('data-step-' + s).style.display = s === n ? 'block' : 'none';
+  });
+}
+
+function handleDataUpload(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+
+  if (ext === 'json') {
+    file.text().then(txt => {
+      const parsed = JSON.parse(txt);
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      state.externalHeaders = Object.keys(rows[0]);
+      state.externalData = rows;
+      showDataPreview();
+    }).catch(() => showToast('Error al leer JSON', 'error'));
+  } else {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const wb = XLSX.read(ev.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      if (!rows.length) { showToast('Archivo vacío', 'error'); return; }
+      state.externalHeaders = Object.keys(rows[0]);
+      state.externalData = rows;
+      showDataPreview();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function showDataPreview() {
+  const rows = state.externalData.slice(0, 5);
+  let html = '<table class="data-table"><thead><tr>';
+  state.externalHeaders.forEach(h => html += `<th>${esc(h)}</th>`);
+  html += '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += '<tr>';
+    state.externalHeaders.forEach(h => html += `<td>${esc(String(r[h] ?? ''))}</td>`);
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  html += `<p style="color:var(--text-dim);font-size:13px">${state.externalData.length} filas detectadas</p>`;
+  html += '<button class="btn btn-primary" style="margin-top:12px" onclick="goToMapping()">Continuar al mapeo →</button>';
+  document.getElementById('data-preview-table').innerHTML = html;
+}
+
+function goToMapping() {
+  setDataStep(2);
+  const vars = ['{{nombre}}','{{estado}}','{{valor}}','{{fecha}}'];
+  let html = '';
+  state.externalHeaders.forEach(h => {
+    const opts = ['<option value="">— Sin mapear —</option>'].concat(vars.map(v => `<option value="${v}">${v}</option>`)).join('');
+    html += `<div class="mapping-row"><span class="field-name">${esc(h)}</span><select id="map-${h}">${opts}</select></div>`;
+  });
+  document.getElementById('mapping-list').innerHTML = html;
+}
+
+function applyMapping() {
+  state.mapping = {};
+  state.externalHeaders.forEach(h => {
+    const v = document.getElementById('map-' + h).value;
+    if (v) state.mapping[h] = v;
+  });
+  setDataStep(3);
+  showToast('Mapeo aplicado');
+}
+
+function selectDataMode(mode) {
+  state.selectedDataMode = mode;
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+  event.currentTarget.classList.add('selected');
+}
+
+function executeDataMode() {
+  if (!state.selectedDataMode) { showToast('Seleccioná un modo', 'error'); return; }
+  const data = state.externalData;
+  const map = state.mapping;
+  const reverseMap = {};
+  Object.entries(map).forEach(([field, variable]) => reverseMap[variable] = field);
+
+  if (state.selectedDataMode === 'per-row') {
+    data.forEach(row => {
+      let content = '';
+      Object.entries(map).forEach(([field, variable]) => {
+        content += `${variable}: ${row[field] ?? ''}\n`;
+      });
+      addSlide({ type: 'content', title: String(row[state.externalHeaders[0]] || 'Slide'), content: content.trim(), chartType: 'bar', chartData: '' });
+    });
+    showToast(`${data.length} slides generados`);
+  } else if (state.selectedDataMode === 'table') {
+    addSlide({ type: 'table', title: 'Tabla resumen', content: JSON.stringify(data), chartType: 'bar', chartData: '' });
+    showToast('Slide de tabla generado');
+  } else if (state.selectedDataMode === 'chart') {
+    const numCols = state.externalHeaders.filter(h => data.every(r => !isNaN(Number(r[h]))));
+    const labelCol = state.externalHeaders.find(h => !numCols.includes(h)) || state.externalHeaders[0];
+    const labels = data.map(r => String(r[labelCol] || ''));
+    const datasets = numCols.slice(0, 4).map(col => ({ label: col, data: data.map(r => Number(r[col]) || 0) }));
+    const chartData = JSON.stringify({ labels, datasets });
+    addSlide({ type: 'chart', title: 'Gráfico automático', content: '', chartType: 'bar', chartData });
+    showToast('Slide de gráfico generado');
+  } else if (state.selectedDataMode === 'replace') {
+    const row = data[0];
+    state.slides.forEach(s => {
+      Object.entries(map).forEach(([field, variable]) => {
+        const val = String(row[field] ?? '');
+        if (s.title) s.title = s.title.split(variable).join(val);
+        if (s.content) s.content = s.content.split(variable).join(val);
+        if (s.left) s.left = s.left.split(variable).join(val);
+        if (s.right) s.right = s.right.split(variable).join(val);
+      });
+    });
+    renderSlideList();
+    showToast('Variables reemplazadas');
+  }
+  switchTab(1);
+}
+
+// ═══════════════════════════════════════════
+// PREVIEW (TAB 3)
+// ═══════════════════════════════════════════
+function renderPreview() {
+  if (!state.slides.length) {
+    document.getElementById('preview-slide').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim)">No hay slides. Agregá al menos uno en el Tab 2.</div>';
+    document.getElementById('preview-counter').textContent = '0 / 0';
+    return;
+  }
+  if (state.previewIndex >= state.slides.length) state.previewIndex = 0;
+  const s = state.slides[state.previewIndex];
+  const c = getConfig();
+  const total = state.slides.length;
+  const num = state.previewIndex + 1;
+  document.getElementById('preview-counter').textContent = `${num} / ${total}`;
+
+  const el = document.getElementById('preview-slide');
+  const isCover = s.type === 'cover' || (state.previewIndex === 0 && s.type === 'cover');
+  const bgStyle = isCover && state.coverBase64
+    ? `background:linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.55)),url(${state.coverBase64}) center/cover;`
+    : `background:${isCover ? c.color1 : '#1e1e2e'};`;
+
+  const logoHtml = state.logoBase64 ? `<img src="${state.logoBase64}">` : '';
+  const header = `<div class="ps-header" style="background:${c.color1}44">${logoHtml}<span style="color:${c.textColor}">${c.client}</span></div>`;
+  const footer = `<div class="ps-footer" style="background:${c.color1};color:${c.textColor}"><span>${c.author}</span><span>${c.date}</span><span>${num}</span></div>`;
+
+  let body = '';
+  if (s.type === 'cover' || s.type === 'closing') {
+    body = `<div class="ps-body cover-body" style="${bgStyle}"><h2 style="color:${c.color2};font-size:32px">${esc(s.title || c.title)}</h2><p style="color:${c.textColor}">${esc(s.content || s.subtitle || c.subtitle)}</p></div>`;
+  } else if (s.type === 'content') {
+    const lines = (s.content || '').split('\n').filter(Boolean);
+    const listHtml = lines.map(l => `<li style="color:${c.textColor}">${esc(l)}</li>`).join('');
+    body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><ul>${listHtml}</ul></div>`;
+  } else if (s.type === 'two-columns') {
+    body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><div class="two-cols"><div style="color:${c.textColor}">${nl2br(esc(s.left || ''))}</div><div style="color:${c.textColor}">${nl2br(esc(s.right || ''))}</div></div></div>`;
+  } else if (s.type === 'quote') {
+    body = `<div class="ps-body" style="align-items:center"><blockquote style="color:${c.textColor};border-color:${c.color2}">${esc(s.content || '')}</blockquote><p style="color:${c.color2};margin-top:12px">— ${esc(s.title || '')}</p></div>`;
+  } else if (s.type === 'image') {
+    const img = s.imageBase64 ? `<img src="${s.imageBase64}" style="max-width:80%;max-height:70%;object-fit:contain;border-radius:8px">` : '<p style="color:var(--text-dim)">Sin imagen</p>';
+    body = `<div class="ps-body" style="align-items:center"><h2 style="color:${c.color2}">${esc(s.title)}</h2>${img}</div>`;
+  } else if (s.type === 'table') {
+    let tableData;
+    try { tableData = JSON.parse(s.content); } catch { tableData = []; }
+    if (tableData.length) {
+      const keys = Object.keys(tableData[0]);
+      let tbl = '<table class="data-table" style="font-size:11px;width:90%;margin:8px auto 0"><thead><tr>';
+      keys.forEach(k => tbl += `<th>${esc(k)}</th>`);
+      tbl += '</tr></thead><tbody>';
+      tableData.slice(0, 10).forEach(r => {
+        tbl += '<tr>';
+        keys.forEach(k => tbl += `<td>${esc(String(r[k] ?? ''))}</td>`);
+        tbl += '</tr>';
+      });
+      tbl += '</tbody></table>';
+      body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2>${tbl}</div>`;
+    } else {
+      body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><p style="color:var(--text-dim)">Sin datos de tabla</p></div>`;
+    }
+  } else if (s.type === 'chart') {
+    body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><div class="preview-chart-container"><canvas id="preview-chart-canvas"></canvas></div></div>`;
+  } else {
+    const lines = (s.content || '').split('\n').filter(Boolean);
+    const listHtml = lines.map(l => `<li style="color:${c.textColor}">${esc(l)}</li>`).join('');
+    body = `<div class="ps-body"><h2 style="color:${c.color2}">${esc(s.title)}</h2><ul>${listHtml}</ul></div>`;
+  }
+
+  el.innerHTML = header + body + footer;
+
+  if (s.type === 'chart') {
+    setTimeout(() => renderPreviewChart(s), 50);
+  }
+}
+
+function renderPreviewChart(s) {
+  const canvas = document.getElementById('preview-chart-canvas');
+  if (!canvas) return;
+  let data;
+  try { data = JSON.parse(s.chartData); } catch { return; }
+  if (!data.labels || !data.datasets) return;
+  const colors = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899'];
+  data.datasets.forEach((ds, di) => {
+    if (!ds.backgroundColor) {
+      ds.backgroundColor = s.chartType === 'pie' ? colors : colors[di % colors.length];
+      ds.borderColor = s.chartType === 'line' ? colors[di % colors.length] : undefined;
+    }
+  });
+  if (chartInstances['preview']) chartInstances['preview'].destroy();
+  chartInstances['preview'] = new Chart(canvas, { type: s.chartType === 'radar' ? 'radar' : s.chartType, data, options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { labels: { color: '#ccc' } } }, scales: s.chartType === 'pie' ? {} : { x: { ticks: { color: '#999' } }, y: { ticks: { color: '#999' } } } } });
+}
+
+function prevPreview() { if (state.previewIndex > 0) { state.previewIndex--; renderPreview(); } }
+function nextPreview() { if (state.previewIndex < state.slides.length - 1) { state.previewIndex++; renderPreview(); } }
+
+function nl2br(s) { return s.replace(/\n/g, '<br>'); }
+
+// ═══════════════════════════════════════════
+// CLAUDE TAB (TAB 4)
+// ═══════════════════════════════════════════
+function goClaudeStep(n) {
+  document.querySelectorAll('.claude-step').forEach((el, i) => el.classList.toggle('active', i === n - 1));
+  [1,2,3].forEach(s => {
+    document.getElementById('cs-' + s).className = 'step' + (s < n ? ' done' : s === n ? ' active' : '');
+  });
+
+  if (n === 2) {
+    const brief = document.getElementById('claude-brief').value.trim();
+    const countSel = document.getElementById('claude-count').value;
+    const count = countSel === 'custom' ? document.getElementById('claude-custom-count').value : countSel;
+    const tipo = document.getElementById('claude-type').value;
+
+    const prompt = `Generá una presentación de ${count} slides sobre el siguiente tema:\n${brief}\n\nTipo: ${tipo}\n\nRespondé ÚNICAMENTE con un JSON válido, sin texto antes ni después, con este formato exacto:\n[\n  { "type": "cover", "title": "Título principal", "subtitle": "Subtítulo" },\n  { "type": "content", "title": "Título", "content": "Línea 1\\nLínea 2\\nLínea 3" },\n  { "type": "two-columns", "title": "Título", "left": "Columna izquierda", "right": "Columna derecha" },\n  { "type": "quote", "title": "Fuente", "content": "Texto de la cita" },\n  { "type": "chart", "title": "Título", "chartType": "bar", "chartData": { "labels": ["A","B","C"], "datasets": [{ "label": "Serie", "data": [10,20,15] }] } },\n  { "type": "closing", "title": "Cierre", "content": "Texto final" }\n]\nEl primer slide siempre debe ser type "cover" y el último "closing".\nUsá los tipos más apropiados para cada sección.`;
+
+    document.getElementById('claude-prompt').textContent = prompt;
+  }
+}
+
+function copyPrompt() {
+  const text = document.getElementById('claude-prompt').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('Prompt copiado al portapapeles'));
+}
+
+function loadClaudeSlides() {
+  const raw = document.getElementById('claude-response').value.trim();
+  const status = document.getElementById('claude-status');
+  try {
+    // Try to extract JSON array from the response
+    let jsonStr = raw;
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (match) jsonStr = match[0];
+    const slides = JSON.parse(jsonStr);
+    if (!Array.isArray(slides) || !slides.length) throw new Error('No es un array');
+
+    state.slides = [];
+    slides.forEach(s => {
+      const slide = {
+        type: s.type || 'content',
+        title: s.title || '',
+        content: s.content || s.subtitle || '',
+        left: s.left || '',
+        right: s.right || '',
+        chartType: s.chartType || 'bar',
+        chartData: s.chartData ? (typeof s.chartData === 'string' ? s.chartData : JSON.stringify(s.chartData)) : '',
+        imageBase64: null
+      };
+      state.slides.push(slide);
+    });
+
+    renderSlideList();
+    status.style.color = 'var(--success)';
+    status.textContent = `${state.slides.length} slides cargados correctamente.`;
+    showToast(`${state.slides.length} slides cargados`);
+    setTimeout(() => switchTab(3), 800);
+  } catch (e) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'JSON inválido — revisá que hayas copiado la respuesta completa.';
+    showToast('JSON inválido', 'error');
+  }
+}
+
+// ═══════════════════════════════════════════
+// PPTX GENERATION
+// ═══════════════════════════════════════════
+async function generatePPTX() {
+  if (!state.slides.length) { showToast('No hay slides para generar', 'error'); return; }
+
+  const c = getConfig();
+  const pptx = new PptxGenJS();
+  pptx.defineLayout({ name: 'CUSTOM', width: 10, height: 5.625 });
+  pptx.layout = 'CUSTOM';
+
+  const hex = v => v.replace('#', '');
+
+  // Render chart images first
+  const chartImages = {};
+  for (let i = 0; i < state.slides.length; i++) {
+    const s = state.slides[i];
+    if (s.type === 'chart' && s.chartData) {
+      chartImages[i] = await renderChartToImage(s);
+    }
+  }
+
+  state.slides.forEach((s, idx) => {
+    const slide = pptx.addSlide();
+    const isCover = s.type === 'cover';
+    const isClosing = s.type === 'closing';
+
+    // Background
+    if (isCover && state.coverBase64) {
+      slide.addImage({ data: state.coverBase64, x: 0, y: 0, w: 10, h: 5.625 });
+      slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 10, h: 5.625, fill: { color: '000000', transparency: 50 } });
+    } else if (isCover || isClosing) {
+      slide.background = { color: hex(c.color1) };
+    } else {
+      slide.background = { color: 'F5F5F5' };
+    }
+
+    // Header (not on cover)
+    if (!isCover) {
+      if (state.logoBase64) {
+        slide.addImage({ data: state.logoBase64, x: 0.3, y: 0.15, w: 0.8, h: 0.4, sizing: { type: 'contain', w: 0.8, h: 0.4 } });
+      }
+      slide.addText(c.client, { x: 7, y: 0.15, w: 2.7, h: 0.4, align: 'right', fontSize: 9, color: '666666' });
+    }
+
+    // Footer
+    const footerY = 5.2;
+    slide.addText(c.author, { x: 0.3, y: footerY, w: 3, h: 0.35, fontSize: 8, color: isCover || isClosing ? hex(c.textColor) : '888888' });
+    slide.addText(c.date, { x: 4, y: footerY, w: 2, h: 0.35, align: 'center', fontSize: 8, color: isCover || isClosing ? hex(c.textColor) : '888888' });
+    slide.addText(String(idx + 1), { x: 8.5, y: footerY, w: 1.2, h: 0.35, align: 'right', fontSize: 8, color: isCover || isClosing ? hex(c.textColor) : '888888' });
+
+    // Content based on type
+    if (isCover || isClosing) {
+      slide.addText(s.title || c.title, {
+        x: 1, y: 1.5, w: 8, h: 1.2,
+        fontSize: 36, bold: true, align: 'center',
+        color: hex(c.color2),
+        presenceProps: { name: 'title-anim', stIdx: 0, animType: 'appear', animDelay: 0 }
+      });
+      slide.addText(s.content || s.subtitle || c.subtitle, {
+        x: 1, y: 2.8, w: 8, h: 0.8,
+        fontSize: 18, align: 'center',
+        color: hex(c.textColor),
+        presenceProps: { name: 'sub-anim', stIdx: 1, animType: 'appear', animDelay: 300 }
+      });
+    } else if (s.type === 'content') {
+      slide.addText(s.title, {
+        x: 0.5, y: 0.7, w: 9, h: 0.6,
+        fontSize: 24, bold: true, color: hex(c.color2)
+      });
+      const lines = (s.content || '').split('\n').filter(Boolean);
+      const bodyObjs = lines.map(l => ({ text: l, options: { bullet: true, fontSize: 16, color: hex(c.textColor), breakLine: true, paraSpaceAfter: 6 } }));
+      if (bodyObjs.length) {
+        slide.addText(bodyObjs, { x: 0.7, y: 1.5, w: 8.6, h: 3.2 });
+      }
+    } else if (s.type === 'two-columns') {
+      slide.addText(s.title, { x: 0.5, y: 0.7, w: 9, h: 0.6, fontSize: 24, bold: true, color: hex(c.color2) });
+      const leftLines = (s.left || '').split('\n').filter(Boolean).map(l => ({ text: l, options: { bullet: true, fontSize: 14, color: '333333', breakLine: true } }));
+      const rightLines = (s.right || '').split('\n').filter(Boolean).map(l => ({ text: l, options: { bullet: true, fontSize: 14, color: '333333', breakLine: true } }));
+      if (leftLines.length) slide.addText(leftLines, { x: 0.5, y: 1.5, w: 4.2, h: 3.2 });
+      if (rightLines.length) slide.addText(rightLines, { x: 5.3, y: 1.5, w: 4.2, h: 3.2 });
+      slide.addShape(pptx.ShapeType.line, { x: 5, y: 1.5, w: 0, h: 3, line: { color: 'CCCCCC', width: 1 } });
+    } else if (s.type === 'quote') {
+      slide.addShape(pptx.ShapeType.rect, { x: 1.5, y: 1.2, w: 0.08, h: 2.5, fill: { color: hex(c.color2) } });
+      slide.addText(s.content || '', { x: 1.8, y: 1.2, w: 6.5, h: 2.5, fontSize: 22, italic: true, color: '333333' });
+      slide.addText('— ' + (s.title || ''), { x: 1.8, y: 3.8, w: 6.5, h: 0.5, fontSize: 14, color: hex(c.color2) });
+    } else if (s.type === 'image') {
+      slide.addText(s.title, { x: 0.5, y: 0.7, w: 9, h: 0.6, fontSize: 24, bold: true, color: hex(c.color2) });
+      if (s.imageBase64) {
+        slide.addImage({ data: s.imageBase64, x: 1.5, y: 1.5, w: 7, h: 3.5, sizing: { type: 'contain', w: 7, h: 3.5 } });
+      }
+    } else if (s.type === 'table') {
+      slide.addText(s.title, { x: 0.5, y: 0.7, w: 9, h: 0.6, fontSize: 24, bold: true, color: hex(c.color2) });
+      let tableData;
+      try { tableData = JSON.parse(s.content); } catch { tableData = []; }
+      if (tableData.length) {
+        const keys = Object.keys(tableData[0]);
+        const headerRow = keys.map(k => ({ text: k, options: { bold: true, fontSize: 10, color: 'FFFFFF', fill: { color: hex(c.color1) } } }));
+        const rows = [headerRow];
+        tableData.slice(0, 15).forEach((r, ri) => {
+          rows.push(keys.map(k => ({ text: String(r[k] ?? ''), options: { fontSize: 9, fill: { color: ri % 2 === 0 ? 'F0F0F0' : 'FFFFFF' } } })));
+        });
+        slide.addTable(rows, { x: 0.5, y: 1.5, w: 9, colW: keys.map(() => 9 / keys.length), border: { pt: 0.5, color: 'CCCCCC' } });
+      }
+    } else if (s.type === 'chart') {
+      slide.addText(s.title, { x: 0.5, y: 0.7, w: 9, h: 0.6, fontSize: 24, bold: true, color: hex(c.color2) });
+      if (chartImages[idx]) {
+        slide.addImage({ data: chartImages[idx], x: 1, y: 1.4, w: 8, h: 3.8, sizing: { type: 'contain', w: 8, h: 3.8 } });
+      }
+    }
+  });
+
+  const fileName = (c.title || 'presentacion').replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, '').replace(/ +/g, '_');
+  pptx.writeFile({ fileName: fileName + '.pptx' }).then(() => {
+    showToast('PPTX generado correctamente');
+  }).catch(err => {
+    console.error(err);
+    showToast('Error al generar PPTX', 'error');
+  });
+}
+
+function renderChartToImage(s) {
+  return new Promise(resolve => {
+    const container = document.getElementById('hidden-charts');
+    const canvas = document.createElement('canvas');
+    canvas.width = 800;
+    canvas.height = 400;
+    container.appendChild(canvas);
+
+    let data;
+    try { data = JSON.parse(s.chartData); } catch { resolve(null); return; }
+    if (!data.labels || !data.datasets) { resolve(null); return; }
+
+    const colors = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#ec4899'];
+    const dataCopy = JSON.parse(JSON.stringify(data));
+    dataCopy.datasets.forEach((ds, di) => {
+      if (!ds.backgroundColor) {
+        ds.backgroundColor = s.chartType === 'pie' ? colors.slice(0, dataCopy.labels.length) : colors[di % colors.length];
+        ds.borderColor = s.chartType === 'line' ? colors[di % colors.length] : undefined;
+        if (s.chartType === 'line') ds.fill = false;
+      }
+    });
+
+    const chart = new Chart(canvas, {
+      type: s.chartType === 'radar' ? 'radar' : s.chartType,
+      data: dataCopy,
+      options: {
+        responsive: false,
+        animation: false,
+        plugins: { legend: { labels: { font: { size: 14 } } } },
+        scales: s.chartType === 'pie' ? {} : {
+          x: { ticks: { font: { size: 12 } } },
+          y: { ticks: { font: { size: 12 } } }
+        }
+      }
+    });
+
+    setTimeout(() => {
+      const imgData = canvas.toDataURL('image/png');
+      chart.destroy();
+      container.removeChild(canvas);
+      resolve(imgData);
+    }, 200);
+  });
+}
+</script>
+</body>
+</html>
