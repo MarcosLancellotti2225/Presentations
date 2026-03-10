@@ -597,40 +597,53 @@ const MONTH_MAP = {
 };
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-function excelSerialToDate(serial) {
-  const n = Number(serial);
-  if (isNaN(n) || n < 1 || n > 200000) return null;
-  const d = new Date(new Date(1899, 11, 30).getTime() + n * 86400000);
-  return isNaN(d.getTime()) ? null : d;
-}
-
 function parseDateValue(val) {
   if (val == null || val === '') return null;
   const s = String(val).trim();
-  if (val instanceof Date && !isNaN(val.getTime())) return val;
+
+  // Skip pure numbers, percentages, and short strings that are clearly not dates
+  if (/^\d+$/.test(s)) return null;
+  if (/^\d+[\.,]\d+$/.test(s)) return null;
+  if (/%/.test(s)) return null;
+  if (s.length < 5) return null;
+
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    // Reject dates before 1950
+    if (val.getFullYear() < 1950) return null;
+    return val;
+  }
   let m;
-  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return new Date(+m[1], +m[2]-1, +m[3]);
+  // ISO date: 2025-03-01
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) {
+    const d = new Date(+m[1], +m[2]-1, +m[3]);
+    return d.getFullYear() >= 1950 ? d : null;
+  }
+  // dd/mm/yyyy or mm/dd/yyyy
   if ((m = s.match(/^(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{2,4})$/))) {
     let y = +m[3]; if (y < 100) y += y < 50 ? 2000 : 1900;
+    if (y < 1950) return null;
     return +m[1] > 12 ? new Date(y, +m[2]-1, +m[1]) : new Date(y, +m[1]-1, +m[2]);
   }
+  // "Mon-YY" or "Mon YYYY"
   if ((m = s.match(/^([A-Za-záéíóúñ]+)[\s\-\.]+(\d{2,4})$/i))) {
     const mi = MONTH_MAP[m[1].toLowerCase()];
-    if (mi !== undefined) { let y = +m[2]; if (y < 100) y += y < 50 ? 2000 : 1900; return new Date(y, mi, 1); }
+    if (mi !== undefined) { let y = +m[2]; if (y < 100) y += y < 50 ? 2000 : 1900; return y >= 1950 ? new Date(y, mi, 1) : null; }
   }
+  // "YYYY Mon"
   if ((m = s.match(/^(\d{4})[\s\-\.]+([A-Za-záéíóúñ]+)$/i))) {
     const mi = MONTH_MAP[m[2].toLowerCase()];
-    if (mi !== undefined) return new Date(+m[1], mi, 1);
+    if (mi !== undefined) return +m[1] >= 1950 ? new Date(+m[1], mi, 1) : null;
   }
+  // "dd Mon YYYY"
   if ((m = s.match(/^(\d{1,2})[\s\-]+([A-Za-záéíóúñ]+)[\s\-,]+(\d{4})$/i))) {
     const mi = MONTH_MAP[m[2].toLowerCase()];
-    if (mi !== undefined) return new Date(+m[3], mi, +m[1]);
+    if (mi !== undefined) return +m[3] >= 1950 ? new Date(+m[3], mi, +m[1]) : null;
   }
+  // "Mon dd, YYYY"
   if ((m = s.match(/^([A-Za-záéíóúñ]+)[\s\-]+(\d{1,2})[,\s]+(\d{4})$/i))) {
     const mi = MONTH_MAP[m[1].toLowerCase()];
-    if (mi !== undefined) return new Date(+m[3], mi, +m[2]);
+    if (mi !== undefined) return +m[3] >= 1950 ? new Date(+m[3], mi, +m[2]) : null;
   }
-  if (/^\d+$/.test(s)) return excelSerialToDate(+s);
   return null;
 }
 
@@ -642,7 +655,7 @@ function normalizeDates() {
     const parsed = vals.map(v => parseDateValue(v));
     const nonEmpty = vals.filter(v => v != null && v !== '').length;
     const validCount = parsed.filter(d => d !== null).length;
-    if (nonEmpty > 0 && validCount / nonEmpty >= 0.7) {
+    if (nonEmpty > 0 && validCount / nonEmpty >= 0.9) {
       S.rawData.forEach((r, i) => { if (parsed[i]) r[h] = formatDate(parsed[i]); });
     }
   });
@@ -652,7 +665,26 @@ function analyzeColumns() {
   S.colTypes = {};
   S.headers.forEach(h => {
     const vals = S.rawData.map(r => r[h]).filter(v => v != null && v !== '');
-    S.colTypes[h] = vals.filter(v => !isNaN(Number(v))).length / vals.length > 0.8 ? 'number' : 'text';
+    // Check if values are numeric (including percentages like "50%")
+    const numCount = vals.filter(v => {
+      const s = String(v).trim();
+      if (!isNaN(Number(s))) return true;
+      // Treat percentages as numeric (strip % and check)
+      if (s.endsWith('%') && !isNaN(Number(s.slice(0,-1).trim()))) return true;
+      return false;
+    }).length;
+    S.colTypes[h] = numCount / vals.length > 0.8 ? 'number' : 'text';
+  });
+  // Also strip % from data for numeric percentage columns so Chart.js can use them
+  S.headers.forEach(h => {
+    if (S.colTypes[h] !== 'number') return;
+    const hasPercent = S.rawData.some(r => String(r[h]||'').includes('%'));
+    if (hasPercent) {
+      S.rawData.forEach(r => {
+        const s = String(r[h]||'').trim();
+        if (s.endsWith('%')) r[h] = Number(s.slice(0,-1).trim()) || 0;
+      });
+    }
   });
 }
 
