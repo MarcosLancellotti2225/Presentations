@@ -1700,10 +1700,11 @@ function dlDataUrl(du, fn) { var a = document.createElement('a'); a.href=du; a.d
 // ═══════════════════════════════
 // PARTNER PORTAL
 // ═══════════════════════════════
-var portalTokens = JSON.parse(localStorage.getItem('portalTokens') || '[]');
+var portalTokens = [];
+localStorage.removeItem('portalTokens'); // Clean up any previously stored tokens
 
 function saveTokens() {
-  localStorage.setItem('portalTokens', JSON.stringify(portalTokens));
+  // Tokens are kept in memory only — never persisted to localStorage or disk
 }
 
 function genTokenId() { return 'tk_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
@@ -1914,10 +1915,10 @@ function importTokenFile(event) {
 function exportTokens() {
   if (portalTokens.length === 0) { showToast('No hay tokens para exportar','error'); return; }
   var data = portalTokens.map(function(t) {
-    return { partner:t.partner, token:t.token, env:t.env, status:t.status, notes:t.notes||'' };
+    return { partner:t.partner, env:t.env, status:t.status, notes:t.notes||'' };
   });
   dlText(JSON.stringify(data, null, 2), 'signaturit-tokens.json', 'application/json');
-  showToast('Tokens exportados como JSON');
+  showToast('Tokens exportados (sin tokens sensibles)');
 }
 
 // ═══════════════════════════════
