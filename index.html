@@ -1822,13 +1822,33 @@ function testToken(id) {
   var t = portalTokens.find(function(x){return x.id===id});
   if (!t) return;
   var baseUrl = t.env === 'production' ? 'https://api.signaturit.com/v3' : 'https://api.sandbox.signaturit.com/v3';
-  showToast('Testeando conexión...');
-  fetch(baseUrl + '/account/credits.json', { headers: { 'Authorization': 'Bearer ' + t.token } })
+  var url = baseUrl + '/account/credits.json';
+  showToast('Testeando ' + t.env + '...');
+  fetch(url, {
+    method: 'GET',
+    headers: { 'Authorization': 'Bearer ' + t.token }
+  })
     .then(function(res) {
-      if (res.ok) { showToast('Conexión exitosa — Token válido'); }
-      else { showToast('Token inválido o expirado (HTTP '+res.status+')','error'); }
+      if (res.ok) {
+        return res.json().then(function(data) {
+          var credits = typeof data.credits !== 'undefined' ? data.credits : JSON.stringify(data);
+          showToast('Token válido — Créditos: ' + credits);
+        });
+      } else if (res.status === 401 || res.status === 403) {
+        showToast('Token inválido o sin permisos (HTTP ' + res.status + ')','error');
+      } else {
+        showToast('Error del servidor (HTTP ' + res.status + ')','error');
+      }
     })
-    .catch(function(err) { showToast('Error de red: '+err.message,'error'); });
+    .catch(function(err) {
+      // CORS or network error — copy curl command to clipboard
+      var curlCmd = 'curl -X GET -H "Authorization: Bearer ' + t.token + '" ' + url;
+      navigator.clipboard.writeText(curlCmd).then(function() {
+        showToast('CORS bloqueado — curl copiado al clipboard','error');
+      }).catch(function() {
+        showToast('CORS bloqueado. Usá terminal: curl -H "Authorization: Bearer ..." ' + url,'error');
+      });
+    });
 }
 
 // Import from CSV or JSON
