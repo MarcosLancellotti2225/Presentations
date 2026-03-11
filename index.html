@@ -1984,10 +1984,13 @@ function openReportModal(ids) {
         '<option value="restantes-desc">Más restantes primero</option>' +
       '</select></div>' +
     (tokens.length > 1 ?
-    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Unificar datos</label>' +
-      '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
-        '<label style="font-size:13px"><input type="checkbox" id="rpt-unify"> Agrupar por tipo (sumar créditos de todos los partners)</label>' +
-      '</div></div>' : '') +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Vista de datos</label>' +
+      '<select id="rpt-view" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
+        '<option value="detail">Detalle por partner (todas las filas)</option>' +
+        '<option value="compare">Comparativo — una fila por partner con totales</option>' +
+        '<option value="unified">Totales unificados por tipo de envío</option>' +
+        '<option value="both">Detalle + Totales (ambas secciones)</option>' +
+      '</select></div>' : '') +
     '<div class="btn-group" style="margin-top:16px">' +
       '<button class="btn btn-primary" onclick="executeReport('+JSON.stringify(ids).replace(/"/g,'&quot;')+')">Generar Reporte</button>' +
       '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button></div>' +
@@ -1998,6 +2001,8 @@ function openReportModal(ids) {
 function closeReportModal() { document.getElementById('token-modal-container').innerHTML = ''; }
 
 function executeReport(ids) {
+  var viewEl = document.getElementById('rpt-view');
+  var viewMode = viewEl ? viewEl.value : 'detail';
   var cfg = {
     credits: document.getElementById('rpt-credits').checked,
     sigCount: document.getElementById('rpt-sig-count').checked,
@@ -2005,19 +2010,68 @@ function executeReport(ids) {
     smsCount: document.getElementById('rpt-sms-count').checked,
     sigStatus: document.getElementById('rpt-sig-status').checked,
     sort: document.getElementById('rpt-sort').value,
-    unify: document.getElementById('rpt-unify') ? document.getElementById('rpt-unify').checked : false
+    unify: false
   };
   closeReportModal();
   var tokens = ids.map(function(id){ return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
+  var isMulti = tokens.length > 1;
   showToast('Obteniendo datos de ' + tokens.length + ' partner(s)...');
   fetchAllPartners(tokens, cfg, function(rows, errors) {
-    if (rows.length > 0) {
-      loadData(rows, tokens.length > 1 ? 'Multi-reporte ('+tokens.length+' partners)' : tokens[0].partner);
-      switchTab(0);
-      showToast(rows.length + ' filas cargadas');
+    if (rows.length === 0) { if (errors.length) showToast('Errores: '+errors.join(', '),'error'); return; }
+
+    var finalRows = [];
+
+    if (!isMulti || viewMode === 'detail') {
+      // Just detail rows
+      finalRows = rows;
+    } else if (viewMode === 'compare') {
+      // One row per partner with summed totals
+      finalRows = buildCompareRows(rows);
+    } else if (viewMode === 'unified') {
+      // Totals grouped by Tipo
+      finalRows = buildUnifiedRows(rows);
+    } else if (viewMode === 'both') {
+      // Detail rows + separator + totals
+      rows.forEach(function(r) { var row = Object.assign({}, r); row.Seccion = 'Detalle'; finalRows.push(row); });
+      var totals = buildUnifiedRows(rows);
+      totals.forEach(function(r) { r.Seccion = 'Totales'; finalRows.push(r); });
     }
+
+    loadData(finalRows, isMulti ? 'Multi-reporte ('+tokens.length+' partners)' : tokens[0].partner);
+    switchTab(0);
+    showToast(finalRows.length + ' filas cargadas');
     if (errors.length > 0) showToast('Errores: '+errors.join(', '), 'error');
   });
+}
+
+function buildUnifiedRows(rows) {
+  var grouped = {};
+  rows.forEach(function(r) {
+    var key = r.Tipo;
+    if (!grouped[key]) { grouped[key] = { Tipo:r.Tipo, Usados:0, Restantes:0, Total:0 }; }
+    grouped[key].Usados += (typeof r.Usados === 'number' ? r.Usados : 0);
+    grouped[key].Restantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
+    grouped[key].Total += (typeof r.Total === 'number' ? r.Total : 0);
+  });
+  return Object.keys(grouped).map(function(k){ return grouped[k]; });
+}
+
+function buildCompareRows(rows) {
+  var partnerMap = {};
+  rows.forEach(function(r) {
+    var p = r.Partner || 'Unknown';
+    if (!partnerMap[p]) { partnerMap[p] = { Partner:p, Total_Usados:0, Total_Restantes:0, Total_Creditos:0 }; }
+    partnerMap[p].Total_Usados += (typeof r.Usados === 'number' ? r.Usados : 0);
+    partnerMap[p].Total_Restantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
+    partnerMap[p].Total_Creditos += (typeof r.Total === 'number' ? r.Total : 0);
+    // Also track per-type columns
+    if (r.Tipo && typeof r.Usados === 'number') {
+      var colName = r.Tipo.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g,'').trim();
+      partnerMap[p][colName+'_Usados'] = (partnerMap[p][colName+'_Usados']||0) + r.Usados;
+      partnerMap[p][colName+'_Restantes'] = (partnerMap[p][colName+'_Restantes']||0) + (typeof r.Restantes==='number'?r.Restantes:0);
+    }
+  });
+  return Object.keys(partnerMap).map(function(k){ return partnerMap[k]; });
 }
 
 // ═══════════════════════════════
@@ -2026,6 +2080,7 @@ function executeReport(ids) {
 function openCsvModal(ids) {
   var tokens = ids.map(function(id){ return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
   if (!tokens.length) return;
+  var isMulti = tokens.length > 1;
   var names = tokens.map(function(t){ return t.partner+' ('+t.env+')'; }).join(', ');
   var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
     '<div class="portal-modal" style="max-width:520px">' +
@@ -2050,11 +2105,13 @@ function openCsvModal(ids) {
         '<option value="restantes-asc">Menos restantes primero</option>' +
         '<option value="restantes-desc">Más restantes primero</option>' +
       '</select></div>' +
-    (tokens.length > 1 ?
-    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Unificar datos</label>' +
-      '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
-        '<label style="font-size:13px"><input type="checkbox" id="csv-unify"> Agrupar por tipo (sumar créditos)</label>' +
-      '</div></div>' : '') +
+    (isMulti ?
+    '<div style="margin-bottom:12px;padding:10px;border-radius:8px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2)">' +
+      '<label style="font-weight:600;font-size:13px;color:var(--accent)">Estructura del CSV (multi-partner)</label>' +
+      '<p style="font-size:12px;color:var(--text-dim);margin:6px 0 0">El CSV incluirá automáticamente:<br>' +
+        '• <b>Detalle por partner</b> — filas individuales de cada uno<br>' +
+        '• <b>Totales unificados</b> — suma agrupada por tipo de envío</p>' +
+    '</div>' : '') +
     '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Separador</label>' +
       '<select id="csv-sep" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
         '<option value=",">Coma (,)</option>' +
@@ -2076,27 +2133,105 @@ function executeCsvDownload(ids) {
     smsCount: document.getElementById('csv-sms-count').checked,
     sigStatus: document.getElementById('csv-sig-status').checked,
     sort: document.getElementById('csv-sort').value,
-    unify: document.getElementById('csv-unify') ? document.getElementById('csv-unify').checked : false
+    unify: false
   };
   var sep = document.getElementById('csv-sep').value;
   if (sep === 'tab') sep = '\t';
   closeReportModal();
   var tokens = ids.map(function(id){ return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
+  var isMulti = tokens.length > 1;
   showToast('Obteniendo datos para CSV...');
   fetchAllPartners(tokens, cfg, function(rows, errors) {
     if (rows.length > 0) {
-      var headers = Object.keys(rows[0]);
-      var csvLines = [headers.join(sep)];
-      rows.forEach(function(r) {
+      var csvLines = [];
+
+      if (isMulti) {
+        // === SECTION 1: Detail per partner ===
+        var headers = Object.keys(rows[0]);
+        csvLines.push('DETALLE POR PARTNER');
+        csvLines.push(headers.join(sep));
+        // Group rows by partner for cleaner output
+        var partnerGroups = {};
+        rows.forEach(function(r) {
+          var p = r.Partner || 'Unknown';
+          if (!partnerGroups[p]) partnerGroups[p] = [];
+          partnerGroups[p].push(r);
+        });
+        Object.keys(partnerGroups).forEach(function(partner) {
+          partnerGroups[partner].forEach(function(r) {
+            csvLines.push(headers.map(function(h) {
+              var v = String(r[h] == null ? '' : r[h]);
+              if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
+              return v;
+            }).join(sep));
+          });
+        });
+
+        // === SECTION 2: Totals unified by Tipo ===
+        csvLines.push('');
+        csvLines.push('TOTALES UNIFICADOS POR TIPO');
+        var totHeaders = ['Tipo','Usados','Restantes','Total'];
+        csvLines.push(totHeaders.join(sep));
+        var grouped = {};
+        rows.forEach(function(r) {
+          var key = r.Tipo;
+          if (!grouped[key]) { grouped[key] = { Tipo:r.Tipo, Usados:0, Restantes:0, Total:0 }; }
+          grouped[key].Usados += (typeof r.Usados === 'number' ? r.Usados : 0);
+          grouped[key].Restantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
+          grouped[key].Total += (typeof r.Total === 'number' ? r.Total : 0);
+        });
+        Object.keys(grouped).forEach(function(k) {
+          var g = grouped[k];
+          csvLines.push(totHeaders.map(function(h) {
+            var v = String(g[h] == null ? '' : g[h]);
+            if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
+            return v;
+          }).join(sep));
+        });
+
+        // === SECTION 3: Grand total ===
+        csvLines.push('');
+        csvLines.push('GRAN TOTAL');
+        var grandUsados = 0, grandRestantes = 0, grandTotal = 0;
+        rows.forEach(function(r) {
+          grandUsados += (typeof r.Usados === 'number' ? r.Usados : 0);
+          grandRestantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
+          grandTotal += (typeof r.Total === 'number' ? r.Total : 0);
+        });
+        csvLines.push(['Todos los tipos','Usados','Restantes','Total'].join(sep));
+        csvLines.push(['TOTAL',grandUsados,grandRestantes,grandTotal].join(sep));
+
+      } else {
+        // Single partner — simple output
+        var headers = Object.keys(rows[0]);
+        csvLines.push(headers.join(sep));
+        rows.forEach(function(r) {
+          csvLines.push(headers.map(function(h) {
+            var v = String(r[h] == null ? '' : r[h]);
+            if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
+            return v;
+          }).join(sep));
+        });
+        // Add totals row
+        var totUsados = 0, totRestantes = 0, totTotal = 0;
+        rows.forEach(function(r) {
+          totUsados += (typeof r.Usados === 'number' ? r.Usados : 0);
+          totRestantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
+          totTotal += (typeof r.Total === 'number' ? r.Total : 0);
+        });
+        csvLines.push('');
         csvLines.push(headers.map(function(h) {
-          var v = String(r[h] == null ? '' : r[h]);
-          if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
-          return v;
+          if (h === 'Tipo') return 'TOTAL';
+          if (h === 'Usados') return totUsados;
+          if (h === 'Restantes') return totRestantes;
+          if (h === 'Total') return totTotal;
+          return '';
         }).join(sep));
-      });
-      var filename = tokens.length > 1 ? 'multi-reporte-signaturit.csv' : tokens[0].partner.replace(/\s+/g,'-')+'-reporte.csv';
+      }
+
+      var filename = isMulti ? 'multi-reporte-signaturit.csv' : tokens[0].partner.replace(/\s+/g,'-')+'-reporte.csv';
       dlText(csvLines.join('\n'), filename, 'text/csv');
-      showToast(rows.length + ' filas exportadas a CSV');
+      showToast(rows.length + ' filas exportadas a CSV (con totales)');
     }
     if (errors.length > 0) showToast('Errores: '+errors.join(', '), 'error');
   });
@@ -2192,19 +2327,6 @@ function fetchAllPartners(tokens, cfg, callback) {
         });
       }
     });
-
-    // Unify: group by Tipo and sum
-    if (cfg.unify && isMulti) {
-      var grouped = {};
-      rows.forEach(function(r) {
-        var key = r.Tipo;
-        if (!grouped[key]) { grouped[key] = { Tipo:r.Tipo, Usados:0, Restantes:0, Total:0, Periodo:r.Periodo, Desde:'—', Hasta:'—' }; }
-        grouped[key].Usados += (typeof r.Usados === 'number' ? r.Usados : 0);
-        grouped[key].Restantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
-        grouped[key].Total += (typeof r.Total === 'number' ? r.Total : 0);
-      });
-      rows = Object.keys(grouped).map(function(k){ return grouped[k]; });
-    }
 
     // Sort
     if (cfg.sort) {
