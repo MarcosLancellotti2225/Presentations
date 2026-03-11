@@ -88,8 +88,12 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
 .chart-wrap{background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:28px;margin:20px 0;position:relative;box-shadow:var(--shadow)}
 .chart-wrap canvas{max-height:500px}
 
-.chart-card{background:var(--surface2);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:20px;transition:all .3s;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.chart-card{background:var(--surface2);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:20px;transition:all .3s;box-shadow:0 4px 16px rgba(0,0,0,.2);opacity:0;animation:cardEnter .6s ease forwards}
 .chart-card:hover{border-color:var(--accent);box-shadow:0 8px 32px rgba(124,58,237,.15)}
+@keyframes cardEnter{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes chartPulse{0%{transform:scale(1)}50%{transform:scale(1.02)}100%{transform:scale(1)}}
+.chart-card.animating .chart-card-body{animation:chartPulse .4s ease}
+.dash-cell.animating{animation:cardEnter .5s ease forwards}
 .chart-card-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,var(--surface3),var(--surface2))}
 .chart-card-header h3{font-size:16px;font-weight:800;letter-spacing:-.3px}
 .chart-card-header .type-badge{font-size:11px;padding:3px 10px;border-radius:20px;background:rgba(124,58,237,.15);color:var(--accent2);font-weight:700}
@@ -764,24 +768,43 @@ function setBgTheme(theme) {
 // ═══════════════════════════════
 // ANIMATION
 // ═══════════════════════════════
-function getAnimConfig() {
-  const type = document.getElementById('anim-type').value;
-  const duration = +document.getElementById('anim-duration').value;
-  const delay = +document.getElementById('anim-delay').value;
-  if (type === 'none') return { animation: false };
-  const base = { animation: { duration } };
-  if (type === 'bounce') base.animation.easing = 'easeOutBounce';
-  else if (type === 'elastic') base.animation.easing = 'easeOutElastic';
-  else if (type === 'progressive') {
-    base.animation.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay + ctx.datasetIndex*300 : 0; };
-  } else if (type === 'drop') {
-    base.animation = { y:{from:0,duration:duration,easing:'easeOutBounce'}, opacity:{from:0,to:1,duration:duration*0.6} };
-    if (delay) base.animation.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay : 0; };
+// Build animation config from parameters (not from serialized config - functions can't be JSON-cloned)
+function buildAnimFromParams(animType, duration, delay) {
+  if (animType === 'none') return false;
+  var anim = { duration: duration };
+  if (animType === 'bounce') {
+    anim.easing = 'easeOutBounce';
+    if (delay) anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay : 0; };
+  } else if (animType === 'elastic') {
+    anim.easing = 'easeOutElastic';
+    if (delay) anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay : 0; };
+  } else if (animType === 'progressive') {
+    anim.easing = 'easeOutQuart';
+    anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay + ctx.datasetIndex*300 : 0; };
+  } else if (animType === 'drop') {
+    anim = {
+      y: { from: 0, duration: duration, easing: 'easeOutBounce' },
+      opacity: { from: 0, to: 1, duration: Math.round(duration * 0.6) }
+    };
+    if (delay) anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay : 0; };
   } else {
-    base.animation.easing = 'easeOutQuart';
-    if (delay) base.animation.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay : 0; };
+    // default
+    anim.easing = 'easeOutQuart';
+    if (delay) anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay + ctx.datasetIndex*200 : 0; };
   }
-  return base;
+  return anim;
+}
+
+function getAnimConfig() {
+  var type = document.getElementById('anim-type').value;
+  var duration = +document.getElementById('anim-duration').value;
+  var delay = +document.getElementById('anim-delay').value;
+  return { animation: buildAnimFromParams(type, duration, delay) };
+}
+
+// Rebuild animation from stored meta (since functions get lost in JSON.stringify)
+function animFromMeta(meta) {
+  return buildAnimFromParams(meta.animType || 'default', +(meta.animDuration || 1000), +(meta.animDelay || 100));
 }
 
 // ═══════════════════════════════
@@ -883,7 +906,7 @@ function buildChartConfig(overrideAnim) {
     type: type, data: { labels: labels, datasets: datasets },
     options: {
       responsive: true, maintainAspectRatio: false, indexAxis: indexAxis,
-      animation: animConfig.animation,
+      animation: false, // animation is rebuilt from meta at render time
       interaction: { mode: 'nearest', intersect: false },
       plugins: {
         title: title ? { display:true, text:title, color:textColor, font:{size:20,weight:'bold'},padding:{bottom:16} } : {display:false},
@@ -912,7 +935,10 @@ function previewChart() {
   wrap.style.display = 'block';
   applyBg(wrap, r.meta.bgTheme);
   if (previewChartInst) { previewChartInst.destroy(); previewChartInst=null; }
-  previewChartInst = new Chart(document.getElementById('preview-canvas'), r.config);
+  // Apply animation from meta at render time
+  var cfg = JSON.parse(JSON.stringify(r.config));
+  cfg.options.animation = animFromMeta(r.meta);
+  previewChartInst = new Chart(document.getElementById('preview-canvas'), cfg);
 }
 
 function createChart() {
@@ -938,6 +964,7 @@ function renderChartsList() {
   S.charts.forEach(function(ch, i) {
     var card = document.createElement('div');
     card.className = 'chart-card';
+    card.style.animationDelay = (i * 0.1) + 's';
     card.innerHTML =
       '<div class="chart-card-header"><div><h3>' + esc(ch.meta.title||('Gráfico '+(i+1))) + '</h3></div><span class="type-badge">' + ch.meta.type + '</span></div>' +
       '<div class="chart-card-body" id="body-' + ch.id + '"><div style="position:relative;height:380px"><canvas id="cv-' + ch.id + '"></canvas></div></div>' +
@@ -950,10 +977,15 @@ function renderChartsList() {
       '</div>';
     list.appendChild(card);
     applyBg(document.getElementById('body-'+ch.id), ch.meta.bgTheme);
+    // Render with animation from meta (rebuilt, not cloned)
     setTimeout(function() {
       var cv = document.getElementById('cv-'+ch.id);
-      if (cv) { var cfg = cloneCfg(ch.config); cfg.options.animation = false; chartInstances[ch.id] = new Chart(cv, cfg); }
-    }, 50);
+      if (cv) {
+        var cfg = cloneCfg(ch.config);
+        cfg.options.animation = animFromMeta(ch.meta);
+        chartInstances[ch.id] = new Chart(cv, cfg);
+      }
+    }, 100 + i * 150);
   });
 }
 
@@ -963,23 +995,11 @@ function replayAnim(i) {
   var cv = document.getElementById('cv-'+ch.id);
   if (!cv) return;
   var cfg = cloneCfg(ch.config);
-  var dur = +ch.meta.animDuration || 1000;
-  var dly = +ch.meta.animDelay || 100;
-  var atype = ch.meta.animType || 'default';
-  if (atype==='none') { cfg.options.animation = false; }
-  else {
-    cfg.options.animation = { duration: dur };
-    if (atype==='bounce') cfg.options.animation.easing = 'easeOutBounce';
-    else if (atype==='elastic') cfg.options.animation.easing = 'easeOutElastic';
-    else cfg.options.animation.easing = 'easeOutQuart';
-    if (atype==='progressive' || atype==='default') {
-      cfg.options.animation.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*dly + ctx.datasetIndex*300 : 0; };
-    }
-    if (atype==='drop') {
-      cfg.options.animation = { y:{from:0,duration:dur,easing:'easeOutBounce'}, opacity:{from:0,to:1,duration:dur*0.6} };
-    }
-  }
+  cfg.options.animation = animFromMeta(ch.meta);
   chartInstances[ch.id] = new Chart(cv, cfg);
+  // CSS pulse on the card
+  var card = cv.closest('.chart-card');
+  if (card) { card.classList.remove('animating'); void card.offsetWidth; card.classList.add('animating'); }
 }
 
 function downloadChartPng(i) {
@@ -1028,14 +1048,18 @@ function setDashLayout(l) { S.dashLayout = l; renderDashboard(); }
 function animateDashboard() {
   Object.keys(chartInstances).filter(function(k){return k.startsWith('dash-');}).forEach(function(k) { chartInstances[k].destroy(); delete chartInstances[k]; });
   S.charts.forEach(function(ch, i) {
+    var cell = document.getElementById('dash-cv-'+i);
+    if (!cell) return;
+    var parent = cell.closest('.dash-cell');
+    if (parent) { parent.style.opacity='0'; parent.classList.remove('animating'); }
     setTimeout(function() {
+      if (parent) { parent.style.opacity=''; parent.style.animationDelay = '0s'; parent.classList.add('animating'); }
       var cv = document.getElementById('dash-cv-'+i);
       if (!cv) return;
       var cfg = cloneCfg(ch.config);
-      cfg.options.animation = { duration:1200, easing:'easeOutQuart',
-        delay: function(ctx) { return ctx.type==='data' ? ctx.dataIndex*80+ctx.datasetIndex*200 : 0; } };
+      cfg.options.animation = buildAnimFromParams('progressive', 1200, 80);
       chartInstances['dash-'+i] = new Chart(cv, cfg);
-    }, i * 400);
+    }, i * 350);
   });
 }
 
