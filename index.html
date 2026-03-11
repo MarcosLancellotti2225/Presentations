@@ -550,6 +550,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
     <button class="btn btn-secondary btn-sm" onclick="document.getElementById('token-file-input').click()">Importar CSV/JSON</button>
     <input type="file" id="token-file-input" accept=".csv,.json" style="display:none" onchange="importTokenFile(event)">
     <button class="btn btn-secondary btn-sm" onclick="exportTokens()">Exportar</button>
+    <button class="btn btn-success btn-sm" id="btn-multi-report" onclick="fetchMultiReport()" style="display:none">Reporte Múltiple (<span id="multi-count">0</span>)</button>
   </div>
 
   <div class="data-table-wrap" style="max-height:500px;overflow-y:auto" id="token-table-wrap">
@@ -1743,10 +1744,11 @@ function renderTokenTable() {
   }
   noEl.style.display = 'none'; wrapEl.style.display = '';
 
-  var html = '<thead><tr><th>#</th><th>Partner</th><th>Token</th><th>Entorno</th><th>Estado</th><th>Notas</th><th>Acciones</th></tr></thead><tbody>';
+  var html = '<thead><tr><th><input type="checkbox" onchange="toggleAllTokens(this.checked)" title="Seleccionar todos"></th><th>#</th><th>Partner</th><th>Token</th><th>Entorno</th><th>Estado</th><th>Notas</th><th>Acciones</th></tr></thead><tbody>';
   filtered.forEach(function(t, i) {
     var maskedToken = t.token.length > 16 ? t.token.slice(0,8) + '...' + t.token.slice(-8) : t.token;
     html += '<tr>' +
+      '<td><input type="checkbox" class="token-check" data-id="'+t.id+'" onchange="updateMultiCount()"></td>' +
       '<td style="color:var(--text-dim);font-size:11px">'+(i+1)+'</td>' +
       '<td style="font-weight:700">'+esc(t.partner)+'</td>' +
       '<td class="token-val" onclick="copyToken(\''+esc(t.token)+'\')">'+esc(maskedToken)+'</td>' +
@@ -2016,6 +2018,84 @@ function formatCreditType(type) {
     'batch': 'Batch'
   };
   return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, function(l){return l.toUpperCase()});
+}
+
+// ═══════════════════════════════
+// MULTI-SELECT & MULTI-REPORT
+// ═══════════════════════════════
+function toggleAllTokens(checked) {
+  document.querySelectorAll('.token-check').forEach(function(cb) { cb.checked = checked; });
+  updateMultiCount();
+}
+
+function updateMultiCount() {
+  var selected = document.querySelectorAll('.token-check:checked');
+  var btn = document.getElementById('btn-multi-report');
+  var countEl = document.getElementById('multi-count');
+  countEl.textContent = selected.length;
+  btn.style.display = selected.length > 0 ? '' : 'none';
+}
+
+function getSelectedTokenIds() {
+  var ids = [];
+  document.querySelectorAll('.token-check:checked').forEach(function(cb) { ids.push(cb.getAttribute('data-id')); });
+  return ids;
+}
+
+function fetchMultiReport() {
+  var ids = getSelectedTokenIds();
+  if (ids.length === 0) { showToast('Seleccioná al menos un token', 'error'); return; }
+  var tokens = ids.map(function(id) { return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
+  showToast('Obteniendo datos de ' + tokens.length + ' partners...');
+
+  var allPromises = tokens.map(function(t) {
+    var baseUrl = t.env === 'production' ? 'https://api.signaturit.com/v3' : 'https://api.sandbox.signaturit.com/v3';
+    var headers = { 'Authorization': 'Bearer ' + t.token };
+    return Promise.all([
+      fetch(baseUrl + '/account/credits.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : Promise.reject('credits: HTTP '+r.status); }),
+      fetch(baseUrl + '/signatures/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; }),
+      fetch(baseUrl + '/emails/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; }),
+      fetch(baseUrl + '/sms/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; })
+    ]).then(function(results) {
+      return { partner: t.partner, env: t.env, credits: results[0], sigCount: results[1].count||0, emailCount: results[2].count||0, smsCount: results[3].count||0 };
+    }).catch(function(err) {
+      return { partner: t.partner, env: t.env, error: typeof err === 'string' ? err : err.message || 'Error' };
+    });
+  });
+
+  Promise.all(allPromises).then(function(results) {
+    var rows = [];
+    var errors = [];
+    results.forEach(function(r) {
+      if (r.error) { errors.push(r.partner + ': ' + r.error); return; }
+      var label = r.partner + ' (' + r.env + ')';
+      var creditArr = Array.isArray(r.credits) ? r.credits : [r.credits];
+      creditArr.forEach(function(c) {
+        rows.push({
+          Partner: label,
+          Tipo: formatCreditType(c.type || 'unknown'),
+          Usados: c.used_credits || 0,
+          Restantes: c.remaining_credits || 0,
+          Total: c.quantity || 0,
+          Periodo: c.period || '—',
+          Desde: c.current_period && c.current_period.from ? c.current_period.from.split('T')[0] : '—',
+          Hasta: c.current_period && c.current_period.to ? c.current_period.to.split('T')[0] : '—'
+        });
+      });
+      rows.push({ Partner: label, Tipo: 'Firmas (total)', Usados: r.sigCount, Restantes: '—', Total: r.sigCount, Periodo: 'acumulado', Desde: '—', Hasta: '—' });
+      rows.push({ Partner: label, Tipo: 'Emails certificados', Usados: r.emailCount, Restantes: '—', Total: r.emailCount, Periodo: 'acumulado', Desde: '—', Hasta: '—' });
+      rows.push({ Partner: label, Tipo: 'SMS certificados', Usados: r.smsCount, Restantes: '—', Total: r.smsCount, Periodo: 'acumulado', Desde: '—', Hasta: '—' });
+    });
+
+    if (rows.length > 0) {
+      loadData(rows, 'Multi-reporte (' + results.length + ' partners)');
+      switchTab(0);
+      showToast(rows.length + ' filas de ' + (results.length - errors.length) + ' partners');
+    }
+    if (errors.length > 0) {
+      showToast('Errores: ' + errors.join(', '), 'error');
+    }
+  });
 }
 </script>
 </body>
