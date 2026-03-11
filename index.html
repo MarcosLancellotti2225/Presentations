@@ -1747,21 +1747,23 @@ function renderTokenTable() {
 
   var html = '<thead><tr><th><input type="checkbox" onchange="toggleAllTokens(this.checked)" title="Seleccionar todos"></th><th>#</th><th>Partner</th><th>Token</th><th>Entorno</th><th>Estado</th><th>Notas</th><th>Acciones</th></tr></thead><tbody>';
   filtered.forEach(function(t, i) {
-    var maskedToken = t.token.length > 16 ? t.token.slice(0,8) + '...' + t.token.slice(-8) : t.token;
-    html += '<tr>' +
-      '<td><input type="checkbox" class="token-check" data-id="'+t.id+'" onchange="updateMultiCount()"></td>' +
+    var hasToken = t.token && t.token.length > 0;
+    var maskedToken = !hasToken ? '<span style="color:#f59e0b;font-size:11px">sin token — editar</span>' :
+      (t.token.length > 16 ? t.token.slice(0,8) + '...' + t.token.slice(-8) : t.token);
+    html += '<tr'+(hasToken?'':' style="opacity:0.7"')+'>' +
+      '<td><input type="checkbox" class="token-check" data-id="'+t.id+'" onchange="updateMultiCount()"'+(hasToken?'':' disabled title="Necesita token"')+'></td>' +
       '<td style="color:var(--text-dim);font-size:11px">'+(i+1)+'</td>' +
       '<td style="font-weight:700">'+esc(t.partner)+'</td>' +
-      '<td class="token-val" onclick="copyToken(\''+esc(t.token)+'\')">'+esc(maskedToken)+'</td>' +
+      '<td class="token-val"'+(hasToken?' onclick="copyToken(\''+esc(t.token)+'\')"':'')+'>'+maskedToken+'</td>' +
       '<td><span class="env-badge env-'+t.env+'">'+t.env+'</span></td>' +
       '<td><span class="status-dot status-'+t.status+'"></span>'+t.status+'</td>' +
       '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);font-size:12px">'+esc(t.notes||'—')+'</td>' +
       '<td><div class="btn-group">' +
-        '<button class="btn btn-xs btn-success" onclick="openReportModal([\''+t.id+'\'])">Reporte</button>' +
-        '<button class="btn btn-xs btn-secondary" onclick="openCsvModal([\''+t.id+'\'])" title="Descargar CSV">CSV</button>' +
+        (hasToken ? '<button class="btn btn-xs btn-success" onclick="openReportModal([\''+t.id+'\'])">Reporte</button>' +
+        '<button class="btn btn-xs btn-secondary" onclick="openCsvModal([\''+t.id+'\'])" title="Descargar CSV">CSV</button>' : '') +
         '<button class="btn btn-xs btn-secondary" onclick="editToken(\''+t.id+'\')">Editar</button>' +
         '<button class="btn btn-xs btn-danger" onclick="deleteToken(\''+t.id+'\')">Eliminar</button>' +
-        '<button class="btn btn-xs btn-secondary" onclick="testToken(\''+t.id+'\')" title="Test connection">Test</button>' +
+        (hasToken ? '<button class="btn btn-xs btn-secondary" onclick="testToken(\''+t.id+'\')" title="Test connection">Test</button>' : '') +
       '</div></td></tr>';
   });
   html += '</tbody>';
@@ -1906,12 +1908,15 @@ function importTokenFile(event) {
           });
         }
       }
-      // Filter out rows without token
-      imported = imported.filter(function(t){return t.partner && t.token});
-      if (imported.length === 0) { showToast('No se encontraron tokens válidos. El archivo debe tener campos "partner" y "token".','error'); inputEl.value=''; return; }
+      // Filter out rows without partner name
+      imported = imported.filter(function(t){return t.partner});
+      if (imported.length === 0) { showToast('No se encontraron partners válidos. El archivo debe tener al menos el campo "partner".','error'); inputEl.value=''; return; }
+      var withoutToken = imported.filter(function(t){return !t.token}).length;
       portalTokens = portalTokens.concat(imported);
       saveTokens(); renderTokenTable();
-      showToast(imported.length + ' token'+(imported.length>1?'s':'')+' importado'+(imported.length>1?'s':''));
+      var msg = imported.length + ' partner'+(imported.length>1?'s':'')+' importado'+(imported.length>1?'s':'');
+      if (withoutToken > 0) msg += ' ('+withoutToken+' sin token — editá para agregar)';
+      showToast(msg, withoutToken > 0 ? 'warning' : 'success');
     } catch(err) {
       showToast('Error parseando archivo: '+err.message,'error');
     }
