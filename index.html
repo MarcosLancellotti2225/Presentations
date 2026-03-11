@@ -550,7 +550,8 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
     <button class="btn btn-secondary btn-sm" onclick="document.getElementById('token-file-input').click()">Importar CSV/JSON</button>
     <input type="file" id="token-file-input" accept=".csv,.json" style="display:none" onchange="importTokenFile(event)">
     <button class="btn btn-secondary btn-sm" onclick="exportTokens()">Exportar</button>
-    <button class="btn btn-success btn-sm" id="btn-multi-report" onclick="fetchMultiReport()" style="display:none">Reporte Múltiple (<span id="multi-count">0</span>)</button>
+    <button class="btn btn-success btn-sm" id="btn-multi-report" onclick="openReportModal(getSelectedTokenIds())" style="display:none">Reporte Múltiple (<span id="multi-count">0</span>)</button>
+    <button class="btn btn-secondary btn-sm" id="btn-multi-csv" onclick="openCsvModal(getSelectedTokenIds())" style="display:none">CSV Múltiple</button>
   </div>
 
   <div class="data-table-wrap" style="max-height:500px;overflow-y:auto" id="token-table-wrap">
@@ -1756,7 +1757,8 @@ function renderTokenTable() {
       '<td><span class="status-dot status-'+t.status+'"></span>'+t.status+'</td>' +
       '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);font-size:12px">'+esc(t.notes||'—')+'</td>' +
       '<td><div class="btn-group">' +
-        '<button class="btn btn-xs btn-success" onclick="fetchReport(\''+t.id+'\')">Reporte</button>' +
+        '<button class="btn btn-xs btn-success" onclick="openReportModal([\''+t.id+'\'])">Reporte</button>' +
+        '<button class="btn btn-xs btn-secondary" onclick="openCsvModal([\''+t.id+'\'])" title="Descargar CSV">CSV</button>' +
         '<button class="btn btn-xs btn-secondary" onclick="editToken(\''+t.id+'\')">Editar</button>' +
         '<button class="btn btn-xs btn-danger" onclick="deleteToken(\''+t.id+'\')">Eliminar</button>' +
         '<button class="btn btn-xs btn-secondary" onclick="testToken(\''+t.id+'\')" title="Test connection">Test</button>' +
@@ -1924,84 +1926,307 @@ function exportTokens() {
 }
 
 // ═══════════════════════════════
-// FETCH REPORT FROM SIGNATURIT
+// MULTI-SELECT
 // ═══════════════════════════════
-function fetchReport(id) {
-  var t = portalTokens.find(function(x){return x.id===id});
-  if (!t) return;
-  var baseUrl = t.env === 'production' ? 'https://api.signaturit.com/v3' : 'https://api.sandbox.signaturit.com/v3';
-  var headers = { 'Authorization': 'Bearer ' + t.token };
-  showToast('Obteniendo datos de ' + t.partner + ' (' + t.env + ')...');
+function toggleAllTokens(checked) {
+  document.querySelectorAll('.token-check').forEach(function(cb) { cb.checked = checked; });
+  updateMultiCount();
+}
 
-  // Fetch credits + counts in parallel
-  Promise.all([
-    fetch(baseUrl + '/account/credits.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : Promise.reject('credits: HTTP '+r.status); }),
-    fetch(baseUrl + '/signatures/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; }),
-    fetch(baseUrl + '/emails/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; }),
-    fetch(baseUrl + '/sms/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; })
-  ])
-  .then(function(results) {
-    var credits = results[0];
-    var sigCount = results[1].count || 0;
-    var emailCount = results[2].count || 0;
-    var smsCount = results[3].count || 0;
+function updateMultiCount() {
+  var selected = document.querySelectorAll('.token-check:checked');
+  var btn = document.getElementById('btn-multi-report');
+  var btnCsv = document.getElementById('btn-multi-csv');
+  var countEl = document.getElementById('multi-count');
+  countEl.textContent = selected.length;
+  btn.style.display = selected.length > 0 ? '' : 'none';
+  btnCsv.style.display = selected.length > 0 ? '' : 'none';
+}
 
-    // Build rows from credits data
-    var rows = [];
-    var creditArr = Array.isArray(credits) ? credits : [credits];
-    creditArr.forEach(function(c) {
-      rows.push({
-        Tipo: formatCreditType(c.type || 'unknown'),
-        Usados: c.used_credits || 0,
-        Restantes: c.remaining_credits || 0,
-        Total: c.quantity || 0,
-        Periodo: c.period || '—',
-        Desde: c.current_period && c.current_period.from ? c.current_period.from.split('T')[0] : '—',
-        Hasta: c.current_period && c.current_period.to ? c.current_period.to.split('T')[0] : '—'
-      });
-    });
+function getSelectedTokenIds() {
+  var ids = [];
+  document.querySelectorAll('.token-check:checked').forEach(function(cb) { ids.push(cb.getAttribute('data-id')); });
+  return ids;
+}
 
-    // Add summary row with counts
-    rows.push({
-      Tipo: 'Firmas (total)',
-      Usados: sigCount,
-      Restantes: '—',
-      Total: sigCount,
-      Periodo: 'acumulado',
-      Desde: '—',
-      Hasta: '—'
-    });
-    rows.push({
-      Tipo: 'Emails certificados',
-      Usados: emailCount,
-      Restantes: '—',
-      Total: emailCount,
-      Periodo: 'acumulado',
-      Desde: '—',
-      Hasta: '—'
-    });
-    rows.push({
-      Tipo: 'SMS certificados',
-      Usados: smsCount,
-      Restantes: '—',
-      Total: smsCount,
-      Periodo: 'acumulado',
-      Desde: '—',
-      Hasta: '—'
-    });
+// ═══════════════════════════════
+// REPORT CONFIG MODAL
+// ═══════════════════════════════
+function openReportModal(ids) {
+  var tokens = ids.map(function(id){ return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
+  if (!tokens.length) return;
+  var names = tokens.map(function(t){ return t.partner + ' ('+t.env+')'; }).join(', ');
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:520px">' +
+    '<h3>Configurar Reporte</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Partners: '+esc(names)+'</p>' +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Fuentes de datos</label>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-credits" checked> Créditos (uso por tipo)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-sig-count" checked> Firmas (conteo total)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-email-count" checked> Emails certificados (conteo)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-sms-count" checked> SMS certificados (conteo)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-sig-status"> Firmas por estado (completed, expired, canceled...)</label>' +
+      '</div></div>' +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Ordenar por</label>' +
+      '<select id="rpt-sort" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
+        '<option value="">Sin orden especial</option>' +
+        '<option value="partner-asc">Partner A→Z</option>' +
+        '<option value="partner-desc">Partner Z→A</option>' +
+        '<option value="tipo-asc">Tipo A→Z</option>' +
+        '<option value="usados-desc">Más usados primero</option>' +
+        '<option value="usados-asc">Menos usados primero</option>' +
+        '<option value="restantes-asc">Menos restantes primero</option>' +
+        '<option value="restantes-desc">Más restantes primero</option>' +
+      '</select></div>' +
+    (tokens.length > 1 ?
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Unificar datos</label>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-unify"> Agrupar por tipo (sumar créditos de todos los partners)</label>' +
+      '</div></div>' : '') +
+    '<div class="btn-group" style="margin-top:16px">' +
+      '<button class="btn btn-primary" onclick="executeReport('+JSON.stringify(ids).replace(/"/g,'&quot;')+')">Generar Reporte</button>' +
+      '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button></div>' +
+    '</div></div>';
+  document.getElementById('token-modal-container').innerHTML = html;
+}
 
-    // Load into chart generator
-    loadData(rows, t.partner + ' (' + t.env + ')');
-    switchTab(0);
-    showToast(rows.length + ' filas cargadas de ' + t.partner);
-  })
-  .catch(function(err) {
-    var errMsg = typeof err === 'string' ? err : err.message || 'Error desconocido';
-    if (errMsg.indexOf('Failed to fetch') !== -1 || errMsg.indexOf('NetworkError') !== -1) {
-      showToast('CORS bloqueado — necesitás un proxy o Edge Function','error');
-    } else {
-      showToast('Error: ' + errMsg, 'error');
+function closeReportModal() { document.getElementById('token-modal-container').innerHTML = ''; }
+
+function executeReport(ids) {
+  var cfg = {
+    credits: document.getElementById('rpt-credits').checked,
+    sigCount: document.getElementById('rpt-sig-count').checked,
+    emailCount: document.getElementById('rpt-email-count').checked,
+    smsCount: document.getElementById('rpt-sms-count').checked,
+    sigStatus: document.getElementById('rpt-sig-status').checked,
+    sort: document.getElementById('rpt-sort').value,
+    unify: document.getElementById('rpt-unify') ? document.getElementById('rpt-unify').checked : false
+  };
+  closeReportModal();
+  var tokens = ids.map(function(id){ return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
+  showToast('Obteniendo datos de ' + tokens.length + ' partner(s)...');
+  fetchAllPartners(tokens, cfg, function(rows, errors) {
+    if (rows.length > 0) {
+      loadData(rows, tokens.length > 1 ? 'Multi-reporte ('+tokens.length+' partners)' : tokens[0].partner);
+      switchTab(0);
+      showToast(rows.length + ' filas cargadas');
     }
+    if (errors.length > 0) showToast('Errores: '+errors.join(', '), 'error');
+  });
+}
+
+// ═══════════════════════════════
+// CSV MODAL & DOWNLOAD
+// ═══════════════════════════════
+function openCsvModal(ids) {
+  var tokens = ids.map(function(id){ return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
+  if (!tokens.length) return;
+  var names = tokens.map(function(t){ return t.partner+' ('+t.env+')'; }).join(', ');
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:520px">' +
+    '<h3>Descargar CSV</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Partners: '+esc(names)+'</p>' +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Fuentes de datos</label>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-credits" checked> Créditos</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-sig-count" checked> Firmas (conteo)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-email-count" checked> Emails certificados</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-sms-count" checked> SMS certificados</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-sig-status"> Firmas por estado</label>' +
+      '</div></div>' +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Ordenar por</label>' +
+      '<select id="csv-sort" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
+        '<option value="">Sin orden especial</option>' +
+        '<option value="partner-asc">Partner A→Z</option>' +
+        '<option value="partner-desc">Partner Z→A</option>' +
+        '<option value="tipo-asc">Tipo A→Z</option>' +
+        '<option value="usados-desc">Más usados primero</option>' +
+        '<option value="usados-asc">Menos usados primero</option>' +
+        '<option value="restantes-asc">Menos restantes primero</option>' +
+        '<option value="restantes-desc">Más restantes primero</option>' +
+      '</select></div>' +
+    (tokens.length > 1 ?
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Unificar datos</label>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-unify"> Agrupar por tipo (sumar créditos)</label>' +
+      '</div></div>' : '') +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Separador</label>' +
+      '<select id="csv-sep" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
+        '<option value=",">Coma (,)</option>' +
+        '<option value=";">Punto y coma (;)</option>' +
+        '<option value="tab">Tab</option>' +
+      '</select></div>' +
+    '<div class="btn-group" style="margin-top:16px">' +
+      '<button class="btn btn-primary" onclick="executeCsvDownload('+JSON.stringify(ids).replace(/"/g,'&quot;')+')">Descargar CSV</button>' +
+      '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button></div>' +
+    '</div></div>';
+  document.getElementById('token-modal-container').innerHTML = html;
+}
+
+function executeCsvDownload(ids) {
+  var cfg = {
+    credits: document.getElementById('csv-credits').checked,
+    sigCount: document.getElementById('csv-sig-count').checked,
+    emailCount: document.getElementById('csv-email-count').checked,
+    smsCount: document.getElementById('csv-sms-count').checked,
+    sigStatus: document.getElementById('csv-sig-status').checked,
+    sort: document.getElementById('csv-sort').value,
+    unify: document.getElementById('csv-unify') ? document.getElementById('csv-unify').checked : false
+  };
+  var sep = document.getElementById('csv-sep').value;
+  if (sep === 'tab') sep = '\t';
+  closeReportModal();
+  var tokens = ids.map(function(id){ return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
+  showToast('Obteniendo datos para CSV...');
+  fetchAllPartners(tokens, cfg, function(rows, errors) {
+    if (rows.length > 0) {
+      var headers = Object.keys(rows[0]);
+      var csvLines = [headers.join(sep)];
+      rows.forEach(function(r) {
+        csvLines.push(headers.map(function(h) {
+          var v = String(r[h] == null ? '' : r[h]);
+          if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
+          return v;
+        }).join(sep));
+      });
+      var filename = tokens.length > 1 ? 'multi-reporte-signaturit.csv' : tokens[0].partner.replace(/\s+/g,'-')+'-reporte.csv';
+      dlText(csvLines.join('\n'), filename, 'text/csv');
+      showToast(rows.length + ' filas exportadas a CSV');
+    }
+    if (errors.length > 0) showToast('Errores: '+errors.join(', '), 'error');
+  });
+}
+
+// ═══════════════════════════════
+// CORE FETCH ENGINE
+// ═══════════════════════════════
+function fetchAllPartners(tokens, cfg, callback) {
+  var allPromises = tokens.map(function(t) {
+    var baseUrl = t.env === 'production' ? 'https://api.signaturit.com/v3' : 'https://api.sandbox.signaturit.com/v3';
+    var hdrs = { 'Authorization': 'Bearer ' + t.token };
+    var fetches = [];
+    // 0: credits
+    fetches.push(cfg.credits ?
+      fetch(baseUrl+'/account/credits.json',{headers:hdrs}).then(function(r){return r.ok?r.json():Promise.reject('credits:HTTP '+r.status)}) :
+      Promise.resolve(null));
+    // 1: sig count
+    fetches.push(cfg.sigCount ?
+      fetch(baseUrl+'/signatures/count.json',{headers:hdrs}).then(function(r){return r.ok?r.json():{count:0}}) :
+      Promise.resolve(null));
+    // 2: email count
+    fetches.push(cfg.emailCount ?
+      fetch(baseUrl+'/emails/count.json',{headers:hdrs}).then(function(r){return r.ok?r.json():{count:0}}) :
+      Promise.resolve(null));
+    // 3: sms count
+    fetches.push(cfg.smsCount ?
+      fetch(baseUrl+'/sms/count.json',{headers:hdrs}).then(function(r){return r.ok?r.json():{count:0}}) :
+      Promise.resolve(null));
+    // 4: sig by status
+    fetches.push(cfg.sigStatus ?
+      Promise.all(['completed','expired','canceled','declined','in_queue','signing'].map(function(st) {
+        return fetch(baseUrl+'/signatures/count.json?status='+st,{headers:hdrs}).then(function(r){return r.ok?r.json().then(function(d){return{status:st,count:d.count||0}}):{status:st,count:0}});
+      })) :
+      Promise.resolve(null));
+
+    return Promise.all(fetches).then(function(res) {
+      return { partner:t.partner, env:t.env, credits:res[0], sigCount:res[1], emailCount:res[2], smsCount:res[3], sigStatuses:res[4] };
+    }).catch(function(err) {
+      return { partner:t.partner, env:t.env, error:typeof err==='string'?err:err.message||'Error' };
+    });
+  });
+
+  Promise.all(allPromises).then(function(results) {
+    var rows = [];
+    var errors = [];
+    var isMulti = tokens.length > 1;
+
+    results.forEach(function(r) {
+      if (r.error) { errors.push(r.partner+': '+r.error); return; }
+      var label = r.partner+' ('+r.env+')';
+
+      // Credits rows
+      if (r.credits) {
+        var creditArr = Array.isArray(r.credits) ? r.credits : [r.credits];
+        creditArr.forEach(function(c) {
+          var row = {
+            Tipo: formatCreditType(c.type||'unknown'),
+            Usados: c.used_credits||0,
+            Restantes: c.remaining_credits||0,
+            Total: c.quantity||0,
+            Periodo: c.period||'—',
+            Desde: c.current_period&&c.current_period.from ? c.current_period.from.split('T')[0] : '—',
+            Hasta: c.current_period&&c.current_period.to ? c.current_period.to.split('T')[0] : '—'
+          };
+          if (isMulti) row.Partner = label;
+          rows.push(row);
+        });
+      }
+      // Counts
+      if (r.sigCount) {
+        var row = { Tipo:'Firmas (total)', Usados:r.sigCount.count||0, Restantes:'—', Total:r.sigCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        if (isMulti) row.Partner = label;
+        rows.push(row);
+      }
+      if (r.emailCount) {
+        var row = { Tipo:'Emails certificados', Usados:r.emailCount.count||0, Restantes:'—', Total:r.emailCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        if (isMulti) row.Partner = label;
+        rows.push(row);
+      }
+      if (r.smsCount) {
+        var row = { Tipo:'SMS certificados', Usados:r.smsCount.count||0, Restantes:'—', Total:r.smsCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        if (isMulti) row.Partner = label;
+        rows.push(row);
+      }
+      // Status breakdown
+      if (r.sigStatuses) {
+        r.sigStatuses.forEach(function(s) {
+          var statusLabel = { completed:'Completadas', expired:'Expiradas', canceled:'Canceladas', declined:'Rechazadas', in_queue:'En cola', signing:'En firma' };
+          var row = { Tipo:'Firma — '+(statusLabel[s.status]||s.status), Usados:s.count, Restantes:'—', Total:s.count, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+          if (isMulti) row.Partner = label;
+          rows.push(row);
+        });
+      }
+    });
+
+    // Unify: group by Tipo and sum
+    if (cfg.unify && isMulti) {
+      var grouped = {};
+      rows.forEach(function(r) {
+        var key = r.Tipo;
+        if (!grouped[key]) { grouped[key] = { Tipo:r.Tipo, Usados:0, Restantes:0, Total:0, Periodo:r.Periodo, Desde:'—', Hasta:'—' }; }
+        grouped[key].Usados += (typeof r.Usados === 'number' ? r.Usados : 0);
+        grouped[key].Restantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
+        grouped[key].Total += (typeof r.Total === 'number' ? r.Total : 0);
+      });
+      rows = Object.keys(grouped).map(function(k){ return grouped[k]; });
+    }
+
+    // Sort
+    if (cfg.sort) {
+      var parts = cfg.sort.split('-');
+      var field = parts[0]; var dir = parts[1] === 'desc' ? -1 : 1;
+      var keyMap = { partner:'Partner', tipo:'Tipo', usados:'Usados', restantes:'Restantes' };
+      var key = keyMap[field];
+      if (key) {
+        rows.sort(function(a,b) {
+          var va = a[key]==null?'':a[key], vb = b[key]==null?'':b[key];
+          if (typeof va === 'number' && typeof vb === 'number') return (va-vb)*dir;
+          return String(va).localeCompare(String(vb))*dir;
+        });
+      }
+    }
+
+    // Reorder columns: Partner first if multi
+    if (isMulti && rows.length > 0 && rows[0].Partner) {
+      rows = rows.map(function(r) {
+        var ordered = { Partner: r.Partner };
+        Object.keys(r).forEach(function(k) { if (k !== 'Partner') ordered[k] = r[k]; });
+        return ordered;
+      });
+    }
+
+    callback(rows, errors);
   });
 }
 
@@ -2018,84 +2243,6 @@ function formatCreditType(type) {
     'batch': 'Batch'
   };
   return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, function(l){return l.toUpperCase()});
-}
-
-// ═══════════════════════════════
-// MULTI-SELECT & MULTI-REPORT
-// ═══════════════════════════════
-function toggleAllTokens(checked) {
-  document.querySelectorAll('.token-check').forEach(function(cb) { cb.checked = checked; });
-  updateMultiCount();
-}
-
-function updateMultiCount() {
-  var selected = document.querySelectorAll('.token-check:checked');
-  var btn = document.getElementById('btn-multi-report');
-  var countEl = document.getElementById('multi-count');
-  countEl.textContent = selected.length;
-  btn.style.display = selected.length > 0 ? '' : 'none';
-}
-
-function getSelectedTokenIds() {
-  var ids = [];
-  document.querySelectorAll('.token-check:checked').forEach(function(cb) { ids.push(cb.getAttribute('data-id')); });
-  return ids;
-}
-
-function fetchMultiReport() {
-  var ids = getSelectedTokenIds();
-  if (ids.length === 0) { showToast('Seleccioná al menos un token', 'error'); return; }
-  var tokens = ids.map(function(id) { return portalTokens.find(function(x){return x.id===id}); }).filter(Boolean);
-  showToast('Obteniendo datos de ' + tokens.length + ' partners...');
-
-  var allPromises = tokens.map(function(t) {
-    var baseUrl = t.env === 'production' ? 'https://api.signaturit.com/v3' : 'https://api.sandbox.signaturit.com/v3';
-    var headers = { 'Authorization': 'Bearer ' + t.token };
-    return Promise.all([
-      fetch(baseUrl + '/account/credits.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : Promise.reject('credits: HTTP '+r.status); }),
-      fetch(baseUrl + '/signatures/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; }),
-      fetch(baseUrl + '/emails/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; }),
-      fetch(baseUrl + '/sms/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; })
-    ]).then(function(results) {
-      return { partner: t.partner, env: t.env, credits: results[0], sigCount: results[1].count||0, emailCount: results[2].count||0, smsCount: results[3].count||0 };
-    }).catch(function(err) {
-      return { partner: t.partner, env: t.env, error: typeof err === 'string' ? err : err.message || 'Error' };
-    });
-  });
-
-  Promise.all(allPromises).then(function(results) {
-    var rows = [];
-    var errors = [];
-    results.forEach(function(r) {
-      if (r.error) { errors.push(r.partner + ': ' + r.error); return; }
-      var label = r.partner + ' (' + r.env + ')';
-      var creditArr = Array.isArray(r.credits) ? r.credits : [r.credits];
-      creditArr.forEach(function(c) {
-        rows.push({
-          Partner: label,
-          Tipo: formatCreditType(c.type || 'unknown'),
-          Usados: c.used_credits || 0,
-          Restantes: c.remaining_credits || 0,
-          Total: c.quantity || 0,
-          Periodo: c.period || '—',
-          Desde: c.current_period && c.current_period.from ? c.current_period.from.split('T')[0] : '—',
-          Hasta: c.current_period && c.current_period.to ? c.current_period.to.split('T')[0] : '—'
-        });
-      });
-      rows.push({ Partner: label, Tipo: 'Firmas (total)', Usados: r.sigCount, Restantes: '—', Total: r.sigCount, Periodo: 'acumulado', Desde: '—', Hasta: '—' });
-      rows.push({ Partner: label, Tipo: 'Emails certificados', Usados: r.emailCount, Restantes: '—', Total: r.emailCount, Periodo: 'acumulado', Desde: '—', Hasta: '—' });
-      rows.push({ Partner: label, Tipo: 'SMS certificados', Usados: r.smsCount, Restantes: '—', Total: r.smsCount, Periodo: 'acumulado', Desde: '—', Hasta: '—' });
-    });
-
-    if (rows.length > 0) {
-      loadData(rows, 'Multi-reporte (' + results.length + ' partners)');
-      switchTab(0);
-      showToast(rows.length + ' filas de ' + (results.length - errors.length) + ' partners');
-    }
-    if (errors.length > 0) {
-      showToast('Errores: ' + errors.join(', '), 'error');
-    }
-  });
 }
 </script>
 </body>
