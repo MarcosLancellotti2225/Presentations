@@ -1753,6 +1753,7 @@ function renderTokenTable() {
       '<td><span class="status-dot status-'+t.status+'"></span>'+t.status+'</td>' +
       '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);font-size:12px">'+esc(t.notes||'—')+'</td>' +
       '<td><div class="btn-group">' +
+        '<button class="btn btn-xs btn-success" onclick="fetchReport(\''+t.id+'\')">Reporte</button>' +
         '<button class="btn btn-xs btn-secondary" onclick="editToken(\''+t.id+'\')">Editar</button>' +
         '<button class="btn btn-xs btn-danger" onclick="deleteToken(\''+t.id+'\')">Eliminar</button>' +
         '<button class="btn btn-xs btn-secondary" onclick="testToken(\''+t.id+'\')" title="Test connection">Test</button>' +
@@ -1917,6 +1918,103 @@ function exportTokens() {
   });
   dlText(JSON.stringify(data, null, 2), 'signaturit-tokens.json', 'application/json');
   showToast('Tokens exportados como JSON');
+}
+
+// ═══════════════════════════════
+// FETCH REPORT FROM SIGNATURIT
+// ═══════════════════════════════
+function fetchReport(id) {
+  var t = portalTokens.find(function(x){return x.id===id});
+  if (!t) return;
+  var baseUrl = t.env === 'production' ? 'https://api.signaturit.com/v3' : 'https://api.sandbox.signaturit.com/v3';
+  var headers = { 'Authorization': 'Bearer ' + t.token };
+  showToast('Obteniendo datos de ' + t.partner + ' (' + t.env + ')...');
+
+  // Fetch credits + counts in parallel
+  Promise.all([
+    fetch(baseUrl + '/account/credits.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : Promise.reject('credits: HTTP '+r.status); }),
+    fetch(baseUrl + '/signatures/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; }),
+    fetch(baseUrl + '/emails/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; }),
+    fetch(baseUrl + '/sms/count.json', { headers: headers }).then(function(r){ return r.ok ? r.json() : { count: 0 }; })
+  ])
+  .then(function(results) {
+    var credits = results[0];
+    var sigCount = results[1].count || 0;
+    var emailCount = results[2].count || 0;
+    var smsCount = results[3].count || 0;
+
+    // Build rows from credits data
+    var rows = [];
+    var creditArr = Array.isArray(credits) ? credits : [credits];
+    creditArr.forEach(function(c) {
+      rows.push({
+        Tipo: formatCreditType(c.type || 'unknown'),
+        Usados: c.used_credits || 0,
+        Restantes: c.remaining_credits || 0,
+        Total: c.quantity || 0,
+        Periodo: c.period || '—',
+        Desde: c.current_period && c.current_period.from ? c.current_period.from.split('T')[0] : '—',
+        Hasta: c.current_period && c.current_period.to ? c.current_period.to.split('T')[0] : '—'
+      });
+    });
+
+    // Add summary row with counts
+    rows.push({
+      Tipo: 'Firmas (total)',
+      Usados: sigCount,
+      Restantes: '—',
+      Total: sigCount,
+      Periodo: 'acumulado',
+      Desde: '—',
+      Hasta: '—'
+    });
+    rows.push({
+      Tipo: 'Emails certificados',
+      Usados: emailCount,
+      Restantes: '—',
+      Total: emailCount,
+      Periodo: 'acumulado',
+      Desde: '—',
+      Hasta: '—'
+    });
+    rows.push({
+      Tipo: 'SMS certificados',
+      Usados: smsCount,
+      Restantes: '—',
+      Total: smsCount,
+      Periodo: 'acumulado',
+      Desde: '—',
+      Hasta: '—'
+    });
+
+    // Load into chart generator
+    loadData(rows, t.partner + ' (' + t.env + ')');
+    switchTab(0);
+    showToast(rows.length + ' filas cargadas de ' + t.partner);
+  })
+  .catch(function(err) {
+    var errMsg = typeof err === 'string' ? err : err.message || 'Error desconocido';
+    if (errMsg.indexOf('Failed to fetch') !== -1 || errMsg.indexOf('NetworkError') !== -1) {
+      showToast('CORS bloqueado — necesitás un proxy o Edge Function','error');
+    } else {
+      showToast('Error: ' + errMsg, 'error');
+    }
+  });
+}
+
+function formatCreditType(type) {
+  var map = {
+    'simple_signature': 'Firma Simple',
+    'advanced_signature': 'Firma Avanzada',
+    'certified_email': 'Email Certificado',
+    'certified_sms': 'SMS Certificado',
+    'certified_file': 'Archivo Certificado',
+    'photo_id': 'Photo ID',
+    'dcf_spot': 'DCF Spot',
+    'sms_credits': 'Créditos SMS',
+    'batch': 'Batch'
+  };
+  return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, function(l){return l.toUpperCase()});
 }
 </script>
 </body>
