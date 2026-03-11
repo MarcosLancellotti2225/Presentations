@@ -1860,10 +1860,11 @@ function testToken(id) {
 // Import from CSV or JSON
 function importTokenFile(event) {
   var file = event.target.files[0];
+  var inputEl = event.target;
   if (!file) return;
   var reader = new FileReader();
-  reader.onload = function(e) {
-    var text = e.target.result;
+  reader.onload = function() {
+    var text = reader.result;
     var imported = [];
     try {
       if (file.name.endsWith('.json')) {
@@ -1882,12 +1883,15 @@ function importTokenFile(event) {
           });
         });
       } else {
-        // CSV parsing
+        // CSV parsing — detect separator
         var lines = text.trim().split('\n');
-        if (lines.length < 2) { showToast('CSV vacío o sin datos','error'); return; }
-        var headers = lines[0].split(',').map(function(h){return h.trim().replace(/^"|"$/g,'').toLowerCase()});
+        if (lines.length < 2) { showToast('CSV vacío o sin datos','error'); inputEl.value=''; return; }
+        var firstLine = lines[0];
+        var sep = firstLine.indexOf(';') !== -1 ? ';' : ',';
+        var headers = firstLine.split(sep).map(function(h){return h.trim().replace(/^"|"$/g,'').toLowerCase()});
         for (var i = 1; i < lines.length; i++) {
-          var vals = lines[i].split(',').map(function(v){return v.trim().replace(/^"|"$/g,'')});
+          if (!lines[i].trim()) continue;
+          var vals = lines[i].split(sep).map(function(v){return v.trim().replace(/^"|"$/g,'')});
           var row = {};
           headers.forEach(function(h, j) { row[h] = vals[j] || ''; });
           imported.push({
@@ -1904,14 +1908,14 @@ function importTokenFile(event) {
       }
       // Filter out rows without token
       imported = imported.filter(function(t){return t.partner && t.token});
-      if (imported.length === 0) { showToast('No se encontraron tokens válidos en el archivo','error'); return; }
+      if (imported.length === 0) { showToast('No se encontraron tokens válidos. El archivo debe tener campos "partner" y "token".','error'); inputEl.value=''; return; }
       portalTokens = portalTokens.concat(imported);
       saveTokens(); renderTokenTable();
       showToast(imported.length + ' token'+(imported.length>1?'s':'')+' importado'+(imported.length>1?'s':''));
     } catch(err) {
       showToast('Error parseando archivo: '+err.message,'error');
     }
-    event.target.value = '';
+    inputEl.value = '';
   };
   reader.readAsText(file);
 }
