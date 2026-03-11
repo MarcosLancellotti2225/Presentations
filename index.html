@@ -147,12 +147,13 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
 .map-target .mt-remove:hover{background:rgba(239,68,68,.15)}
 .map-add-row{display:flex;gap:8px;align-items:center;margin-top:8px}
 
-.chart-desglose{border-top:1px solid var(--border);overflow:hidden;transition:max-height .3s ease}
-.chart-desglose.collapsed{max-height:0}
-.chart-desglose.expanded{max-height:600px}
-.chart-desglose .desglose-inner{padding:16px 20px;max-height:280px;overflow-y:auto}
-.chart-desglose .data-table{font-size:12px}
-.chart-desglose .data-table th{font-size:10px}
+.chart-desglose{border-top:1px solid var(--border);overflow:hidden;transition:max-height .4s cubic-bezier(.4,0,.2,1);max-height:0}
+.chart-desglose.expanded{max-height:800px}
+.chart-desglose .desglose-inner{padding:16px 20px;max-height:340px;overflow-y:auto}
+.chart-desglose .data-table{font-size:12px;width:100%;border-collapse:collapse}
+.chart-desglose .data-table th{font-size:10px;position:sticky;top:0;z-index:2}
+.chart-desglose .data-table td,.chart-desglose .data-table th{padding:6px 10px}
+.chart-desglose .stat-chip{background:var(--surface3);border:1px solid var(--border);border-radius:10px}
 
 .toast{position:fixed;bottom:24px;right:24px;padding:14px 28px;border-radius:var(--radius);font-size:14px;font-weight:700;z-index:9999;transform:translateY(100px);opacity:0;transition:all .4s cubic-bezier(.4,0,.2,1)}
 .toast.show{transform:translateY(0);opacity:1}
@@ -478,6 +479,13 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
     <div class="form-group">
       <label>Seleccionar gráfico</label>
       <select id="export-select" onchange="renderExportPreview()"></select>
+    </div>
+
+    <div class="form-row" style="margin-top:12px">
+      <div class="form-group">
+        <label>Incluir desglose</label>
+        <select id="export-desglose"><option value="no">No</option><option value="yes">Sí — debajo del gráfico</option><option value="separate">Sí — imagen separada</option></select>
+      </div>
     </div>
 
     <div class="export-grid">
@@ -932,30 +940,51 @@ function setBgTheme(theme) {
 // ANIMATION
 // ═══════════════════════════════
 // Build animation config from parameters (not from serialized config - functions can't be JSON-cloned)
+// Jitter-style animations: bars grow from 0, lines draw, staggered reveals
 function buildAnimFromParams(animType, duration, delay) {
   if (animType === 'none') return false;
-  var anim = { duration: duration };
+
   if (animType === 'bounce') {
-    anim.easing = 'easeOutBounce';
-    if (delay) anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay : 0; };
-  } else if (animType === 'elastic') {
-    anim.easing = 'easeOutElastic';
-    if (delay) anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay : 0; };
-  } else if (animType === 'progressive') {
-    anim.easing = 'easeOutQuart';
-    anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay + ctx.datasetIndex*300 : 0; };
-  } else if (animType === 'drop') {
-    anim = {
-      y: { from: 0, duration: duration, easing: 'easeOutBounce' },
-      opacity: { from: 0, to: 1, duration: Math.round(duration * 0.6) }
+    return {
+      y: { from: function(ctx) { return ctx.chart.scales.y ? ctx.chart.scales.y.getPixelForValue(0) : ctx.chart.height; }, duration: duration, easing: 'easeOutBounce' },
+      opacity: { from: 0, to: 1, duration: Math.round(duration * 0.5), easing: 'easeOutQuad' },
+      delay: function(ctx) { return ctx.type === 'data' ? ctx.dataIndex * delay + ctx.datasetIndex * 120 : 0; }
     };
-    if (delay) anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay : 0; };
-  } else {
-    // default
-    anim.easing = 'easeOutQuart';
-    if (delay) anim.delay = function(ctx) { return ctx.type==='data' ? ctx.dataIndex*delay + ctx.datasetIndex*200 : 0; };
   }
-  return anim;
+
+  if (animType === 'elastic') {
+    return {
+      y: { from: function(ctx) { return ctx.chart.scales.y ? ctx.chart.scales.y.getPixelForValue(0) : ctx.chart.height; }, duration: duration, easing: 'easeOutElastic' },
+      opacity: { from: 0, to: 1, duration: Math.round(duration * 0.4), easing: 'easeOutQuad' },
+      delay: function(ctx) { return ctx.type === 'data' ? ctx.dataIndex * delay + ctx.datasetIndex * 150 : 0; }
+    };
+  }
+
+  if (animType === 'progressive') {
+    return {
+      y: { from: function(ctx) { return ctx.chart.scales.y ? ctx.chart.scales.y.getPixelForValue(0) : ctx.chart.height; }, duration: duration, easing: 'easeOutCubic' },
+      x: { from: function(ctx) { return ctx.chart.scales.x ? ctx.chart.scales.x.getPixelForValue(ctx.chart.scales.x.min) : 0; }, duration: duration, easing: 'easeOutCubic' },
+      opacity: { from: 0, to: 1, duration: Math.round(duration * 0.6), easing: 'linear' },
+      delay: function(ctx) { return ctx.type === 'data' ? ctx.dataIndex * (delay + 40) + ctx.datasetIndex * 300 : 0; }
+    };
+  }
+
+  if (animType === 'drop') {
+    return {
+      y: { from: 0, duration: duration, easing: 'easeOutBounce' },
+      opacity: { from: 0, to: 1, duration: Math.round(duration * 0.5) },
+      radius: { from: 0, duration: Math.round(duration * 0.8), easing: 'easeOutBack' },
+      delay: function(ctx) { return ctx.type === 'data' ? ctx.dataIndex * delay + ctx.datasetIndex * 200 : 0; }
+    };
+  }
+
+  // default — smooth grow from bottom with stagger (jitter-style)
+  return {
+    y: { from: function(ctx) { return ctx.chart.scales.y ? ctx.chart.scales.y.getPixelForValue(0) : ctx.chart.height; }, duration: duration, easing: 'easeOutCubic' },
+    opacity: { from: 0, to: 1, duration: Math.round(duration * 0.6), easing: 'easeOutQuad' },
+    radius: { from: 0, duration: Math.round(duration * 0.7), easing: 'easeOutBack' },
+    delay: function(ctx) { return ctx.type === 'data' ? ctx.dataIndex * delay + ctx.datasetIndex * 200 : 0; }
+  };
 }
 
 function getAnimConfig() {
@@ -1150,7 +1179,7 @@ function renderChartsList() {
         '<button class="btn btn-xs btn-secondary" onclick="duplicateChart(' + i + ')">Duplicar</button>' +
         '<button class="btn btn-xs btn-danger" onclick="removeChart(' + i + ')">Eliminar</button>' +
       '</div>' +
-      '<div class="chart-desglose collapsed" id="desglose-' + ch.id + '">' +
+      '<div class="chart-desglose" id="desglose-' + ch.id + '">' +
         '<div class="desglose-inner">' + desgloseHtml + '</div>' +
       '</div>';
     list.appendChild(card);
@@ -1182,9 +1211,84 @@ function replayAnim(i) {
 
 function downloadChartPng(i) {
   var ch = S.charts[i];
-  renderOffscreen(ch, function(dataUrl) { dlDataUrl(dataUrl, (ch.meta.title||'chart')+'.png'); showToast('PNG descargado'); });
+  renderOffscreen(ch, function(dataUrl) {
+    dlDataUrl(dataUrl, (ch.meta.title||'chart')+'.png');
+    showToast('PNG descargado');
+  });
 }
 function downloadChartPptx(i) { exportPptxFromCharts([S.charts[i]], (S.charts[i].meta.title||'chart')+'.pptx'); }
+
+// Render desglose table as a canvas image
+function renderDesgloseImage(ch, w) {
+  w = w || 1600;
+  var labels = ch.config.data.labels || [];
+  var datasets = ch.config.data.datasets || [];
+  if (!labels.length) return null;
+
+  var cols = ['#', 'Etiqueta'].concat(datasets.map(function(ds){ return ds.label || 'Serie'; }));
+  var colCount = cols.length;
+  var rowCount = labels.length + 1; // header + data
+  var rowH = 28, headerH = 32, statH = 50, padX = 12;
+  var colW = Math.floor((w - 40) / colCount);
+  var totalH = headerH + rowCount * rowH + statH + 40;
+
+  var oc = document.createElement('canvas'); oc.width = w; oc.height = totalH;
+  var ctx = oc.getContext('2d');
+
+  // Background
+  var isDark = ch.meta.bgTheme !== 'light';
+  ctx.fillStyle = isDark ? '#12121a' : '#ffffff';
+  ctx.fillRect(0, 0, w, totalH);
+
+  var x0 = 20, y = 16;
+  // Header
+  ctx.fillStyle = isDark ? '#222240' : '#eeeef4';
+  ctx.fillRect(x0, y, w - 40, headerH);
+  ctx.font = 'bold 11px Inter, sans-serif';
+  ctx.fillStyle = isDark ? '#a78bfa' : '#6d28d9';
+  cols.forEach(function(c, ci) { ctx.fillText(c, x0 + ci * colW + padX, y + 21); });
+  y += headerH;
+
+  // Rows
+  ctx.font = '12px Inter, sans-serif';
+  for (var r = 0; r < labels.length; r++) {
+    ctx.fillStyle = r % 2 === 0 ? (isDark ? '#18182a' : '#f8f8fc') : (isDark ? '#1e1e36' : '#ffffff');
+    ctx.fillRect(x0, y, w - 40, rowH);
+    ctx.fillStyle = isDark ? '#e0e0f0' : '#333333';
+    ctx.fillText(String(r + 1), x0 + padX, y + 19);
+    ctx.fillText(String(labels[r] || ''), x0 + colW + padX, y + 19);
+    datasets.forEach(function(ds, di) {
+      var val = ds.data && ds.data[r] !== undefined ? ds.data[r] : '';
+      if (typeof val === 'object') val = JSON.stringify(val);
+      ctx.fillText(String(val), x0 + (di + 2) * colW + padX, y + 19);
+    });
+    y += rowH;
+  }
+
+  // Stats
+  y += 10;
+  ctx.font = 'bold 11px Inter, sans-serif';
+  var statX = x0;
+  datasets.forEach(function(ds) {
+    var nums = (ds.data||[]).filter(function(v){return typeof v==='number';});
+    if (!nums.length) return;
+    var sum = nums.reduce(function(a,b){return a+b;},0);
+    var avg = Math.round(sum / nums.length * 100) / 100;
+    var mn = Math.min.apply(null, nums);
+    var mx = Math.max.apply(null, nums);
+    ctx.fillStyle = isDark ? '#222240' : '#eeeef4';
+    ctx.beginPath(); ctx.rect(statX, y, 200, 36); ctx.fill();
+    ctx.fillStyle = isDark ? '#a78bfa' : '#6d28d9';
+    ctx.fillText(ds.label || 'Serie', statX + 8, y + 14);
+    ctx.font = '10px Inter, sans-serif';
+    ctx.fillStyle = isDark ? '#6e6e9a' : '#888';
+    ctx.fillText('Σ ' + sum.toLocaleString() + ' · μ ' + avg + ' · ↓' + mn + ' · ↑' + mx, statX + 8, y + 28);
+    ctx.font = 'bold 11px Inter, sans-serif';
+    statX += 212;
+  });
+
+  return oc.toDataURL('image/png', 1.0);
+}
 
 function removeChart(i) {
   var ch = S.charts[i];
@@ -1240,13 +1344,7 @@ function buildDesgloseTable(ch) {
 function toggleDesglose(chId) {
   var el = document.getElementById('desglose-' + chId);
   if (!el) return;
-  if (el.classList.contains('collapsed')) {
-    el.classList.remove('collapsed');
-    el.classList.add('expanded');
-  } else {
-    el.classList.remove('expanded');
-    el.classList.add('collapsed');
-  }
+  el.classList.toggle('expanded');
 }
 
 // ═══════════════════════════════
@@ -1315,6 +1413,7 @@ function renderExportPreview() {
 
 function exportAs(fmt) {
   var ch = S.charts[+document.getElementById('export-select').value]; if (!ch) return;
+  var desMode = document.getElementById('export-desglose').value;
   if (fmt==='json') { dlText(JSON.stringify({config:ch.config,meta:ch.meta,data:S.rawData},null,2),(ch.meta.title||'chart')+'.json','application/json'); showToast('JSON descargado'); return; }
   if (fmt==='csv') {
     var lb = ch.config.data.labels||[]; var ds = ch.config.data.datasets||[];
@@ -1322,13 +1421,54 @@ function exportAs(fmt) {
     lb.forEach(function(l,i) { csv += l+','+ds.map(function(d){return (d.data&&d.data[i]!==undefined)?(typeof d.data[i]==='object'?JSON.stringify(d.data[i]):d.data[i]):'';}).join(',')+'\n'; });
     dlText(csv,(ch.meta.title||'chart')+'.csv','text/csv'); showToast('CSV descargado'); return;
   }
-  renderOffscreen(ch, function(dataUrl) {
-    if (fmt==='jpg') {
-      renderOffscreen(ch, function(du) { dlDataUrl(du,(ch.meta.title||'chart')+'.jpg'); showToast('JPG descargado'); }, 'image/jpeg', true);
+
+  var mime = fmt === 'jpg' ? 'image/jpeg' : 'image/png';
+  var ext = fmt === 'jpg' ? '.jpg' : '.png';
+  var forceWhite = fmt === 'jpg';
+
+  renderOffscreen(ch, function(chartDataUrl) {
+    if (desMode === 'separate') {
+      // Download chart
+      dlDataUrl(chartDataUrl, (ch.meta.title||'chart') + ext);
+      // Download desglose as separate image
+      var desImg = renderDesgloseImage(ch, 1600);
+      if (desImg) dlDataUrl(desImg, (ch.meta.title||'chart') + '-desglose.png');
+      showToast(ext.toUpperCase().slice(1) + ' + desglose descargados');
+    } else if (desMode === 'yes') {
+      // Combine chart + desglose into one image
+      var desImg2 = renderDesgloseImage(ch, 1600);
+      if (desImg2) {
+        combineImages(chartDataUrl, desImg2, 1600, function(combined) {
+          dlDataUrl(combined, (ch.meta.title||'chart') + ext);
+          showToast(ext.toUpperCase().slice(1) + ' con desglose descargado');
+        });
+      } else {
+        dlDataUrl(chartDataUrl, (ch.meta.title||'chart') + ext);
+        showToast(ext.toUpperCase().slice(1) + ' descargado');
+      }
     } else {
-      dlDataUrl(dataUrl,(ch.meta.title||'chart')+'.png'); showToast('PNG descargado');
+      dlDataUrl(chartDataUrl, (ch.meta.title||'chart') + ext);
+      showToast(ext.toUpperCase().slice(1) + ' descargado');
     }
-  });
+  }, mime, forceWhite);
+}
+
+// Combine two data URL images vertically
+function combineImages(topUrl, bottomUrl, width, cb) {
+  var imgTop = new Image(); var imgBot = new Image();
+  var loaded = 0;
+  function check() {
+    loaded++;
+    if (loaded < 2) return;
+    var totalH = imgTop.height + imgBot.height;
+    var oc = document.createElement('canvas'); oc.width = width; oc.height = totalH;
+    var ctx = oc.getContext('2d');
+    ctx.drawImage(imgTop, 0, 0, width, imgTop.height);
+    ctx.drawImage(imgBot, 0, imgTop.height, width, imgBot.height);
+    cb(oc.toDataURL('image/png', 1.0));
+  }
+  imgTop.onload = check; imgBot.onload = check;
+  imgTop.src = topUrl; imgBot.src = bottomUrl;
 }
 
 function exportAllPng() {
@@ -1411,6 +1551,7 @@ function _recordChartToVideo(ch, filename) {
 // ═══════════════════════════════
 async function exportPptxFromCharts(charts, filename) {
   showToast('Generando PPTX…');
+  var desMode = document.getElementById('export-desglose') ? document.getElementById('export-desglose').value : 'no';
   var pptx = new PptxGenJS();
   pptx.defineLayout({ name:'WIDE', width:13.333, height:7.5 });
   pptx.layout = 'WIDE';
@@ -1431,6 +1572,17 @@ async function exportPptxFromCharts(charts, filename) {
     slide.addText(ch.meta.title || ('Gráfico '+(i+1)), { x:0.5, y:0.3, w:12.3, h:0.7, fontSize:28, bold:true, color:titleColor, fontFace:'Calibri' });
     slide.addImage({ data: imgData, x:0.5, y:1.2, w:12.3, h:5.8, sizing:{type:'contain',w:12.3,h:5.8} });
     slide.addText((i+1)+' / '+charts.length, { x:11.5, y:7, w:1.5, h:0.4, fontSize:10, color:'666688', fontFace:'Calibri', align:'right' });
+
+    // Add desglose slide if enabled
+    if (desMode === 'yes' || desMode === 'separate') {
+      var desImg = renderDesgloseImage(ch, 1920);
+      if (desImg) {
+        var desSlide = pptx.addSlide();
+        desSlide.background = { color: bgColor };
+        desSlide.addText((ch.meta.title || ('Gráfico '+(i+1))) + ' — Desglose', { x:0.5, y:0.2, w:12.3, h:0.6, fontSize:22, bold:true, color:titleColor, fontFace:'Calibri' });
+        desSlide.addImage({ data: desImg, x:0.3, y:1, w:12.7, h:6, sizing:{type:'contain',w:12.7,h:6} });
+      }
+    }
   }
 
   var closeSlide = pptx.addSlide();
