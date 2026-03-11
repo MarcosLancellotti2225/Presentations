@@ -137,6 +137,22 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
 .map-panel h3{font-size:14px;font-weight:800;margin-bottom:12px;color:var(--accent2)}
 .map-row{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-bottom:8px;font-size:13px}
 .map-arrow{color:var(--accent2);font-weight:bold;text-align:center}
+.map-panel select{padding:6px 10px;font-size:12px;min-width:100px}
+.map-panel input[type=text]{padding:6px 10px;font-size:12px;width:100%}
+.map-target{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface3);border:1px solid var(--border);border-radius:10px;margin-bottom:10px}
+.map-target .mt-label{font-weight:700;font-size:12px;min-width:90px;color:var(--accent2)}
+.map-target .mt-selects{display:flex;gap:8px;flex-wrap:wrap;flex:1;align-items:center}
+.map-target .mt-selects label{margin:0;font-size:10px;color:var(--text-dim)}
+.map-target .mt-remove{color:var(--danger);background:none;font-size:14px;padding:2px 6px;border-radius:4px}
+.map-target .mt-remove:hover{background:rgba(239,68,68,.15)}
+.map-add-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+
+.chart-desglose{border-top:1px solid var(--border);overflow:hidden;transition:max-height .3s ease}
+.chart-desglose.collapsed{max-height:0}
+.chart-desglose.expanded{max-height:600px}
+.chart-desglose .desglose-inner{padding:16px 20px;max-height:280px;overflow-y:auto}
+.chart-desglose .data-table{font-size:12px}
+.chart-desglose .data-table th{font-size:10px}
 
 .toast{position:fixed;bottom:24px;right:24px;padding:14px 28px;border-radius:var(--radius);font-size:14px;font-weight:700;z-index:9999;transform:translateY(100px);opacity:0;transition:all .4s cubic-bezier(.4,0,.2,1)}
 .toast.show{transform:translateY(0);opacity:1}
@@ -203,6 +219,15 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
   <div id="files-section" style="display:none">
     <h3 style="font-size:16px;font-weight:800;margin:24px 0 8px;color:#fff">Archivos cargados</h3>
     <div class="file-list" id="file-list"></div>
+    <div id="map-panel" class="map-panel" style="display:none">
+      <h3>Mapeo de columnas</h3>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Asociá columnas de distintos archivos para combinarlas. Cada fila define una columna en el resultado final.</p>
+      <div id="map-rows"></div>
+      <div class="map-add-row">
+        <button class="btn btn-xs btn-secondary" onclick="addMappingRow()">+ Agregar columna</button>
+        <button class="btn btn-xs btn-secondary" onclick="autoDetectMappings()">🔍 Auto-detectar</button>
+      </div>
+    </div>
     <div class="btn-group" style="margin:16px 0">
       <button class="btn btn-primary" onclick="combineFiles()">Combinar archivos</button>
       <button class="btn btn-danger btn-sm" onclick="clearAllFiles()">Limpiar todo</button>
@@ -556,6 +581,69 @@ function renderFileList() {
       <button class="f-remove" onclick="removeFile(${i})">&times;</button>
     </div>
   `).join('');
+  renderMappingPanel();
+}
+
+// ═══════════════════════════════
+// COLUMN MAPPING
+// ═══════════════════════════════
+let mappingRows = []; // [{target:'ColName', sources:{fileId:'colName',...}}]
+
+function renderMappingPanel() {
+  var panel = document.getElementById('map-panel');
+  if (S.files.length < 2) { panel.style.display='none'; return; }
+  panel.style.display='block';
+  if (!mappingRows.length) autoDetectMappings();
+  renderMappingRows();
+}
+
+function renderMappingRows() {
+  var container = document.getElementById('map-rows');
+  container.innerHTML = mappingRows.map(function(mr, mi) {
+    var html = '<div class="map-target">';
+    html += '<input type="text" class="mt-label" value="' + esc(mr.target) + '" onchange="mappingRows['+mi+'].target=this.value" placeholder="Nombre columna" style="min-width:100px;max-width:130px">';
+    html += '<div class="mt-selects">';
+    S.files.forEach(function(f, fi) {
+      html += '<div style="display:flex;flex-direction:column;gap:2px">';
+      html += '<label>' + esc(f.label || f.name) + '</label>';
+      html += '<select onchange="mappingRows['+mi+'].sources[\''+f.id+'\']=this.value">';
+      html += '<option value="">— ignorar —</option>';
+      f.headers.forEach(function(h) {
+        var sel = mr.sources[f.id] === h ? ' selected' : '';
+        html += '<option value="' + esc(h) + '"' + sel + '>' + esc(h) + '</option>';
+      });
+      html += '</select></div>';
+    });
+    html += '</div>';
+    html += '<button class="mt-remove" onclick="removeMappingRow('+mi+')">&times;</button>';
+    html += '</div>';
+    return html;
+  }).join('');
+}
+
+function addMappingRow() {
+  mappingRows.push({ target: '', sources: {} });
+  renderMappingRows();
+}
+
+function removeMappingRow(i) {
+  mappingRows.splice(i, 1);
+  renderMappingRows();
+}
+
+function autoDetectMappings() {
+  mappingRows = [];
+  // Collect all unique headers
+  var allHeaders = new Set();
+  S.files.forEach(function(f) { f.headers.forEach(function(h) { allHeaders.add(h); }); });
+  allHeaders.forEach(function(h) {
+    var row = { target: h, sources: {} };
+    S.files.forEach(function(f) {
+      if (f.headers.includes(h)) row.sources[f.id] = h;
+    });
+    mappingRows.push(row);
+  });
+  renderMappingRows();
 }
 
 function removeFile(i) {
@@ -582,19 +670,35 @@ function useFileData(i) {
 function combineFiles() {
   if (S.files.length < 2) { showToast('Necesitás al menos 2 archivos', 'error'); return; }
 
-  // Collect all unique headers across files
-  const allHeaders = new Set();
-  S.files.forEach(f => f.headers.forEach(h => allHeaders.add(h)));
+  // Use mappings if available
+  var useMappings = mappingRows.length > 0 && mappingRows.some(function(mr) { return mr.target; });
 
-  // Combine all rows, adding _Archivo column
-  const combined = [];
-  S.files.forEach(f => {
-    f.rows.forEach(r => {
-      const row = { _Archivo: f.label };
-      allHeaders.forEach(h => { row[h] = r[h] !== undefined ? r[h] : ''; });
-      combined.push(row);
+  var combined = [];
+  if (useMappings) {
+    // Filter valid mappings (with a target name)
+    var validMaps = mappingRows.filter(function(mr) { return mr.target && mr.target.trim(); });
+    S.files.forEach(function(f) {
+      f.rows.forEach(function(r) {
+        var row = { _Archivo: f.label };
+        validMaps.forEach(function(mr) {
+          var srcCol = mr.sources[f.id];
+          row[mr.target.trim()] = srcCol && r[srcCol] !== undefined ? r[srcCol] : '';
+        });
+        combined.push(row);
+      });
     });
-  });
+  } else {
+    // Fallback: merge all columns directly
+    var allHeaders = new Set();
+    S.files.forEach(function(f) { f.headers.forEach(function(h) { allHeaders.add(h); }); });
+    S.files.forEach(function(f) {
+      f.rows.forEach(function(r) {
+        var row = { _Archivo: f.label };
+        allHeaders.forEach(function(h) { row[h] = r[h] !== undefined ? r[h] : ''; });
+        combined.push(row);
+      });
+    });
+  }
 
   loadData(combined, 'Combinado');
   showToast(S.files.length + ' archivos combinados: ' + combined.length + ' filas');
@@ -965,6 +1069,7 @@ function renderChartsList() {
     var card = document.createElement('div');
     card.className = 'chart-card';
     card.style.animationDelay = (i * 0.1) + 's';
+    var desgloseHtml = buildDesgloseTable(ch);
     card.innerHTML =
       '<div class="chart-card-header"><div><h3>' + esc(ch.meta.title||('Gráfico '+(i+1))) + '</h3></div><span class="type-badge">' + ch.meta.type + '</span></div>' +
       '<div class="chart-card-body" id="body-' + ch.id + '"><div style="position:relative;height:380px"><canvas id="cv-' + ch.id + '"></canvas></div></div>' +
@@ -972,8 +1077,12 @@ function renderChartsList() {
         '<button class="btn btn-xs btn-primary" onclick="replayAnim(' + i + ')">▶ Animar</button>' +
         '<button class="btn btn-xs btn-success" onclick="downloadChartPng(' + i + ')">📥 PNG</button>' +
         '<button class="btn btn-xs btn-warning" onclick="downloadChartPptx(' + i + ')">📑 PPTX</button>' +
+        '<button class="btn btn-xs btn-secondary" onclick="toggleDesglose(\'' + ch.id + '\')">📋 Desglose</button>' +
         '<button class="btn btn-xs btn-secondary" onclick="duplicateChart(' + i + ')">Duplicar</button>' +
         '<button class="btn btn-xs btn-danger" onclick="removeChart(' + i + ')">Eliminar</button>' +
+      '</div>' +
+      '<div class="chart-desglose collapsed" id="desglose-' + ch.id + '">' +
+        '<div class="desglose-inner">' + desgloseHtml + '</div>' +
       '</div>';
     list.appendChild(card);
     applyBg(document.getElementById('body-'+ch.id), ch.meta.bgTheme);
@@ -1018,6 +1127,57 @@ function duplicateChart(i) {
   var copy = JSON.parse(JSON.stringify(S.charts[i]));
   copy.id = 'ch-'+Date.now(); copy.meta.title = (copy.meta.title||'Gráfico')+' (copia)';
   S.charts.push(copy); renderChartsList(); showToast('Duplicado');
+}
+
+function buildDesgloseTable(ch) {
+  var labels = ch.config.data.labels || [];
+  var datasets = ch.config.data.datasets || [];
+  if (!labels.length && !datasets.length) return '<p style="color:var(--text-dim);font-size:12px">Sin datos</p>';
+
+  var html = '<table class="data-table"><thead><tr><th class="row-num">#</th><th>Etiqueta</th>';
+  datasets.forEach(function(ds) { html += '<th>' + esc(ds.label || 'Serie') + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  var maxRows = Math.max(labels.length, datasets.length ? datasets[0].data.length : 0);
+  for (var r = 0; r < maxRows; r++) {
+    html += '<tr><td class="row-num">' + (r+1) + '</td>';
+    html += '<td>' + esc(String(labels[r] || '')) + '</td>';
+    datasets.forEach(function(ds) {
+      var val = ds.data && ds.data[r] !== undefined ? ds.data[r] : '';
+      if (typeof val === 'object') val = JSON.stringify(val);
+      html += '<td>' + esc(String(val)) + '</td>';
+    });
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+
+  // Summary row
+  html += '<div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">';
+  datasets.forEach(function(ds) {
+    var nums = (ds.data||[]).filter(function(v){return typeof v==='number';});
+    if (nums.length) {
+      var sum = nums.reduce(function(a,b){return a+b;},0);
+      var avg = Math.round(sum / nums.length * 100) / 100;
+      var min = Math.min.apply(null, nums);
+      var max = Math.max.apply(null, nums);
+      html += '<div class="stat-chip" style="padding:6px 10px"><strong style="font-size:12px">' + esc(ds.label||'Serie') + '</strong>';
+      html += '<span style="font-size:10px">Σ ' + sum.toLocaleString() + ' · μ ' + avg.toLocaleString() + ' · ↓' + min.toLocaleString() + ' · ↑' + max.toLocaleString() + '</span></div>';
+    }
+  });
+  html += '</div>';
+  return html;
+}
+
+function toggleDesglose(chId) {
+  var el = document.getElementById('desglose-' + chId);
+  if (!el) return;
+  if (el.classList.contains('collapsed')) {
+    el.classList.remove('collapsed');
+    el.classList.add('expanded');
+  } else {
+    el.classList.remove('expanded');
+    el.classList.add('collapsed');
+  }
 }
 
 // ═══════════════════════════════
