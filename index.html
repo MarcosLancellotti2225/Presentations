@@ -176,6 +176,32 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
 .palette-row .pal-swatches{display:flex;gap:3px}
 .palette-row .pal-swatches span{width:18px;height:18px;border-radius:4px;display:block}
 
+/* Partner Portal */
+.portal-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.portal-toolbar input[type=text]{flex:1;min-width:180px}
+.token-table{width:100%;border-collapse:collapse;font-size:13px}
+.token-table th,.token-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
+.token-table th{background:var(--surface3);color:var(--accent2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0;z-index:2}
+.token-table td{background:var(--surface2)}
+.token-table tr:hover td{background:var(--surface3)}
+.token-val{font-family:'Courier New',monospace;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;position:relative}
+.token-val:hover{color:var(--accent2)}
+.token-val::after{content:'click to copy';position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:9px;color:var(--text-dim);font-family:'Inter',sans-serif;opacity:0;transition:opacity .2s}
+.token-val:hover::after{opacity:1}
+.env-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:800;letter-spacing:.3px}
+.env-sandbox{background:rgba(245,158,11,.15);color:#f59e0b}
+.env-production{background:rgba(239,68,68,.15);color:#ef4444}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-active{background:#22c55e}
+.status-inactive{background:#6e6e9a}
+.portal-stats{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.portal-stat{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;flex:1;min-width:120px}
+.portal-stat .ps-val{font-size:24px;font-weight:900;color:var(--accent2)}
+.portal-stat .ps-label{font-size:11px;color:var(--text-dim);margin-top:2px}
+.portal-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:flex;align-items:center;justify-content:center;animation:fadeUp .2s ease}
+.portal-modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;width:480px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.portal-modal h3{font-size:18px;font-weight:800;margin-bottom:16px;color:#fff}
+
 @media(max-width:900px){
   .sidebar{width:56px;min-width:56px}
   .sidebar-header h1 span,.sidebar-header p,.tab-btn span:not(.ico){display:none}
@@ -200,6 +226,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
     <button class="tab-btn" onclick="switchTab(2)"><span class="ico">📊</span> <span>Gráficos</span></button>
     <button class="tab-btn" onclick="switchTab(3)"><span class="ico">🖼</span> <span>Dashboard</span></button>
     <button class="tab-btn" onclick="switchTab(4)"><span class="ico">💾</span> <span>Exportar</span></button>
+    <button class="tab-btn" onclick="switchTab(5)"><span class="ico">🔑</span> <span>Portal</span></button>
   </nav>
 </aside>
 
@@ -505,6 +532,39 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
   </div>
 </div>
 
+<!-- TAB 5: PARTNER PORTAL -->
+<div class="tab-content" id="tab-5">
+  <h2 class="section-title">Partner Portal</h2>
+  <p class="section-desc">Gestioná los tokens de Signaturit para cada partner. Subí desde CSV/JSON o agregá manualmente.</p>
+
+  <div class="portal-stats" id="portal-stats"></div>
+
+  <div class="portal-toolbar">
+    <input type="text" id="portal-search" placeholder="Buscar partner o token..." oninput="renderTokenTable()">
+    <select id="portal-env-filter" onchange="renderTokenTable()" style="width:140px">
+      <option value="">Todos los env</option>
+      <option value="sandbox">Sandbox</option>
+      <option value="production">Production</option>
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="openTokenModal()">+ Agregar token</button>
+    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('token-file-input').click()">Importar CSV/JSON</button>
+    <input type="file" id="token-file-input" accept=".csv,.json" style="display:none" onchange="importTokenFile(event)">
+    <button class="btn btn-secondary btn-sm" onclick="exportTokens()">Exportar</button>
+  </div>
+
+  <div class="data-table-wrap" style="max-height:500px;overflow-y:auto" id="token-table-wrap">
+    <table class="token-table" id="token-table"></table>
+  </div>
+
+  <div id="no-tokens" class="empty-state">
+    <div class="empty-icon">🔑</div>
+    <h3>No hay tokens cargados</h3>
+    <p>Agregá tokens manualmente o importá un archivo CSV/JSON.</p>
+  </div>
+</div>
+
+<div id="token-modal-container"></div>
+
 </main>
 <div class="toast" id="toast"></div>
 
@@ -566,6 +626,7 @@ function switchTab(idx) {
   if (idx===2) renderChartsList();
   if (idx===3) renderDashboard();
   if (idx===4) refreshExportPanel();
+  if (idx===5) renderTokenTable();
 }
 
 function showToast(msg, type='success') {
@@ -963,7 +1024,6 @@ function buildAnimFromParams(animType, duration, delay) {
   if (animType === 'progressive') {
     return {
       y: { from: function(ctx) { return ctx.chart.scales.y ? ctx.chart.scales.y.getPixelForValue(0) : ctx.chart.height; }, duration: duration, easing: 'easeOutCubic' },
-      x: { from: function(ctx) { return ctx.chart.scales.x ? ctx.chart.scales.x.getPixelForValue(ctx.chart.scales.x.min) : 0; }, duration: duration, easing: 'easeOutCubic' },
       opacity: { from: 0, to: 1, duration: Math.round(duration * 0.6), easing: 'linear' },
       delay: function(ctx) { return ctx.type === 'data' ? ctx.dataIndex * (delay + 40) + ctx.datasetIndex * 300 : 0; }
     };
@@ -1636,6 +1696,208 @@ function dlText(text, fn, mime) {
   a.download = fn; a.click();
 }
 function dlDataUrl(du, fn) { var a = document.createElement('a'); a.href=du; a.download=fn; a.click(); }
+
+// ═══════════════════════════════
+// PARTNER PORTAL
+// ═══════════════════════════════
+var portalTokens = JSON.parse(localStorage.getItem('portalTokens') || '[]');
+
+function saveTokens() {
+  localStorage.setItem('portalTokens', JSON.stringify(portalTokens));
+}
+
+function genTokenId() { return 'tk_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+
+function renderPortalStats() {
+  var el = document.getElementById('portal-stats');
+  var total = portalTokens.length;
+  var active = portalTokens.filter(function(t){return t.status==='active'}).length;
+  var sandbox = portalTokens.filter(function(t){return t.env==='sandbox'}).length;
+  var prod = portalTokens.filter(function(t){return t.env==='production'}).length;
+  el.innerHTML =
+    '<div class="portal-stat"><div class="ps-val">'+total+'</div><div class="ps-label">Total tokens</div></div>' +
+    '<div class="portal-stat"><div class="ps-val">'+active+'</div><div class="ps-label">Activos</div></div>' +
+    '<div class="portal-stat"><div class="ps-val">'+sandbox+'</div><div class="ps-label">Sandbox</div></div>' +
+    '<div class="portal-stat"><div class="ps-val">'+prod+'</div><div class="ps-label">Production</div></div>';
+}
+
+function getFilteredTokens() {
+  var q = (document.getElementById('portal-search').value || '').toLowerCase();
+  var envF = document.getElementById('portal-env-filter').value;
+  return portalTokens.filter(function(t) {
+    if (envF && t.env !== envF) return false;
+    if (q && t.partner.toLowerCase().indexOf(q) === -1 && t.token.toLowerCase().indexOf(q) === -1 && (t.notes||'').toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  });
+}
+
+function renderTokenTable() {
+  renderPortalStats();
+  var filtered = getFilteredTokens();
+  var noEl = document.getElementById('no-tokens');
+  var wrapEl = document.getElementById('token-table-wrap');
+
+  if (portalTokens.length === 0) {
+    noEl.style.display = ''; wrapEl.style.display = 'none'; return;
+  }
+  noEl.style.display = 'none'; wrapEl.style.display = '';
+
+  var html = '<thead><tr><th>#</th><th>Partner</th><th>Token</th><th>Entorno</th><th>Estado</th><th>Notas</th><th>Acciones</th></tr></thead><tbody>';
+  filtered.forEach(function(t, i) {
+    var maskedToken = t.token.length > 16 ? t.token.slice(0,8) + '...' + t.token.slice(-8) : t.token;
+    html += '<tr>' +
+      '<td style="color:var(--text-dim);font-size:11px">'+(i+1)+'</td>' +
+      '<td style="font-weight:700">'+esc(t.partner)+'</td>' +
+      '<td class="token-val" onclick="copyToken(\''+esc(t.token)+'\')">'+esc(maskedToken)+'</td>' +
+      '<td><span class="env-badge env-'+t.env+'">'+t.env+'</span></td>' +
+      '<td><span class="status-dot status-'+t.status+'"></span>'+t.status+'</td>' +
+      '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);font-size:12px">'+esc(t.notes||'—')+'</td>' +
+      '<td><div class="btn-group">' +
+        '<button class="btn btn-xs btn-secondary" onclick="editToken(\''+t.id+'\')">Editar</button>' +
+        '<button class="btn btn-xs btn-danger" onclick="deleteToken(\''+t.id+'\')">Eliminar</button>' +
+        '<button class="btn btn-xs btn-secondary" onclick="testToken(\''+t.id+'\')" title="Test connection">Test</button>' +
+      '</div></td></tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('token-table').innerHTML = html;
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function copyToken(token) {
+  navigator.clipboard.writeText(token).then(function() { showToast('Token copiado al clipboard'); });
+}
+
+function openTokenModal(editId) {
+  var t = editId ? portalTokens.find(function(x){return x.id===editId}) : null;
+  var title = t ? 'Editar token' : 'Agregar token';
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeTokenModal()">' +
+    '<div class="portal-modal"><h3>'+title+'</h3>' +
+    '<div class="form-group"><label>Partner</label><input type="text" id="tk-partner" value="'+esc(t?t.partner:'')+'" placeholder="Nombre del partner"></div>' +
+    '<div class="form-group"><label>Token (Bearer)</label><textarea id="tk-token" rows="3" placeholder="ZjEyMmE1ZDFh...">'+esc(t?t.token:'')+'</textarea></div>' +
+    '<div class="form-row"><div class="form-group"><label>Entorno</label><select id="tk-env">' +
+      '<option value="sandbox"'+(t&&t.env==='sandbox'?' selected':'')+'>Sandbox</option>' +
+      '<option value="production"'+(t&&t.env==='production'?' selected':'')+'>Production</option></select></div>' +
+    '<div class="form-group"><label>Estado</label><select id="tk-status">' +
+      '<option value="active"'+(t&&t.status==='active'?' selected':'')+'>Activo</option>' +
+      '<option value="inactive"'+(t&&t.status==='inactive'?' selected':'')+'>Inactivo</option></select></div></div>' +
+    '<div class="form-group"><label>Notas</label><input type="text" id="tk-notes" value="'+esc(t?t.notes||'':'')+'" placeholder="Opcional"></div>' +
+    '<div class="btn-group" style="margin-top:16px">' +
+      '<button class="btn btn-primary" onclick="saveTokenForm(\''+(editId||'')+'\')">'+(t?'Guardar':'Agregar')+'</button>' +
+      '<button class="btn btn-secondary" onclick="closeTokenModal()">Cancelar</button></div>' +
+    '</div></div>';
+  document.getElementById('token-modal-container').innerHTML = html;
+}
+
+function closeTokenModal() { document.getElementById('token-modal-container').innerHTML = ''; }
+
+function saveTokenForm(editId) {
+  var partner = document.getElementById('tk-partner').value.trim();
+  var token = document.getElementById('tk-token').value.trim();
+  var env = document.getElementById('tk-env').value;
+  var status = document.getElementById('tk-status').value;
+  var notes = document.getElementById('tk-notes').value.trim();
+  if (!partner || !token) { showToast('Partner y token son obligatorios','error'); return; }
+
+  if (editId) {
+    var t = portalTokens.find(function(x){return x.id===editId});
+    if (t) { t.partner=partner; t.token=token; t.env=env; t.status=status; t.notes=notes; t.updatedAt=new Date().toISOString(); }
+  } else {
+    portalTokens.push({ id:genTokenId(), partner:partner, token:token, env:env, status:status, notes:notes, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
+  }
+  saveTokens(); closeTokenModal(); renderTokenTable();
+  showToast(editId ? 'Token actualizado' : 'Token agregado');
+}
+
+function editToken(id) { openTokenModal(id); }
+
+function deleteToken(id) {
+  if (!confirm('Eliminar este token?')) return;
+  portalTokens = portalTokens.filter(function(t){return t.id!==id});
+  saveTokens(); renderTokenTable();
+  showToast('Token eliminado');
+}
+
+function testToken(id) {
+  var t = portalTokens.find(function(x){return x.id===id});
+  if (!t) return;
+  var baseUrl = t.env === 'production' ? 'https://api.signaturit.com/v3' : 'https://api.sandbox.signaturit.com/v3';
+  showToast('Testeando conexión...');
+  fetch(baseUrl + '/account/credits.json', { headers: { 'Authorization': 'Bearer ' + t.token } })
+    .then(function(res) {
+      if (res.ok) { showToast('Conexión exitosa — Token válido'); }
+      else { showToast('Token inválido o expirado (HTTP '+res.status+')','error'); }
+    })
+    .catch(function(err) { showToast('Error de red: '+err.message,'error'); });
+}
+
+// Import from CSV or JSON
+function importTokenFile(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    var imported = [];
+    try {
+      if (file.name.endsWith('.json')) {
+        var data = JSON.parse(text);
+        if (!Array.isArray(data)) data = [data];
+        data.forEach(function(row) {
+          imported.push({
+            id: genTokenId(),
+            partner: row.partner || row.name || row.Partner || row.Name || '',
+            token: row.token || row.api_token || row.Token || row.api_key || row.ApiToken || '',
+            env: (row.env || row.environment || row.Env || 'sandbox').toLowerCase(),
+            status: (row.status || row.Status || 'active').toLowerCase(),
+            notes: row.notes || row.Notes || row.description || '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        });
+      } else {
+        // CSV parsing
+        var lines = text.trim().split('\n');
+        if (lines.length < 2) { showToast('CSV vacío o sin datos','error'); return; }
+        var headers = lines[0].split(',').map(function(h){return h.trim().replace(/^"|"$/g,'').toLowerCase()});
+        for (var i = 1; i < lines.length; i++) {
+          var vals = lines[i].split(',').map(function(v){return v.trim().replace(/^"|"$/g,'')});
+          var row = {};
+          headers.forEach(function(h, j) { row[h] = vals[j] || ''; });
+          imported.push({
+            id: genTokenId(),
+            partner: row.partner || row.name || '',
+            token: row.token || row.api_token || row.api_key || '',
+            env: (row.env || row.environment || 'sandbox').toLowerCase(),
+            status: (row.status || 'active').toLowerCase(),
+            notes: row.notes || row.description || '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+      // Filter out rows without token
+      imported = imported.filter(function(t){return t.partner && t.token});
+      if (imported.length === 0) { showToast('No se encontraron tokens válidos en el archivo','error'); return; }
+      portalTokens = portalTokens.concat(imported);
+      saveTokens(); renderTokenTable();
+      showToast(imported.length + ' token'+(imported.length>1?'s':'')+' importado'+(imported.length>1?'s':''));
+    } catch(err) {
+      showToast('Error parseando archivo: '+err.message,'error');
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function exportTokens() {
+  if (portalTokens.length === 0) { showToast('No hay tokens para exportar','error'); return; }
+  var data = portalTokens.map(function(t) {
+    return { partner:t.partner, token:t.token, env:t.env, status:t.status, notes:t.notes||'' };
+  });
+  dlText(JSON.stringify(data, null, 2), 'signaturit-tokens.json', 'application/json');
+  showToast('Tokens exportados como JSON');
+}
 </script>
 </body>
 </html>
