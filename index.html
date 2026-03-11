@@ -328,6 +328,64 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
       </div>
     </div>
 
+    <div class="anim-panel" style="background:linear-gradient(135deg,rgba(34,197,94,.06),rgba(6,182,212,.06));border-color:rgba(34,197,94,.2)">
+      <h3 style="color:var(--success)">Tipografía y textos</h3>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Fuente</label>
+          <select id="txt-font">
+            <option value="Inter" selected>Inter</option>
+            <option value="Calibri">Calibri</option>
+            <option value="Arial">Arial</option>
+            <option value="Helvetica">Helvetica</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Courier New">Courier New</option>
+            <option value="monospace">Monospace</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tamaño título</label>
+          <select id="txt-title-size">
+            <option value="14">14px</option>
+            <option value="18">18px</option>
+            <option value="20" selected>20px</option>
+            <option value="24">24px</option>
+            <option value="28">28px</option>
+            <option value="32">32px</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Color título</label>
+          <input type="color" id="txt-title-color" value="#a78bfa" style="height:38px;padding:4px;width:100%">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Tamaño ejes</label>
+          <select id="txt-axis-size">
+            <option value="9">9px</option>
+            <option value="11" selected>11px</option>
+            <option value="13">13px</option>
+            <option value="15">15px</option>
+            <option value="18">18px</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Color ejes</label>
+          <input type="color" id="txt-axis-color" value="#cccccc" style="height:38px;padding:4px;width:100%">
+        </div>
+        <div class="form-group">
+          <label>Tamaño leyenda</label>
+          <select id="txt-legend-size">
+            <option value="10">10px</option>
+            <option value="12" selected>12px</option>
+            <option value="14">14px</option>
+            <option value="16">16px</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <div class="anim-panel">
       <h3>Animación</h3>
       <div class="anim-row">
@@ -430,6 +488,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
       <div class="export-card" onclick="exportPptxSingle()"><span class="eico">📑</span><h4>PPTX</h4><p>1 slide</p></div>
       <div class="export-card" onclick="exportPptxAll()"><span class="eico">📊</span><h4>PPTX All</h4><p>Todos los gráficos</p></div>
       <div class="export-card" onclick="exportAllPng()"><span class="eico">📦</span><h4>All PNG</h4><p>Todos como PNG</p></div>
+      <div class="export-card" onclick="exportVideo()"><span class="eico">🎬</span><h4>Video</h4><p>WebM animado</p></div>
     </div>
 
     <div class="chart-wrap" style="margin-top:24px" id="export-wrap">
@@ -928,6 +987,12 @@ function buildChartConfig(overrideAnim) {
   var showValues = document.getElementById('show-values').value === 'true';
   var horiz = document.getElementById('orientation').value === 'horizontal';
   var barRadius = +document.getElementById('bar-radius').value;
+  var txtFont = document.getElementById('txt-font').value;
+  var txtTitleSize = +document.getElementById('txt-title-size').value;
+  var txtTitleColor = document.getElementById('txt-title-color').value;
+  var txtAxisSize = +document.getElementById('txt-axis-size').value;
+  var txtAxisColor = document.getElementById('txt-axis-color').value;
+  var txtLegendSize = +document.getElementById('txt-legend-size').value;
   var palette = PALETTES[S.selectedPalette].colors;
   var bgTheme = S.bgTheme;
   var animConfig = overrideAnim || getAnimConfig();
@@ -1003,8 +1068,10 @@ function buildChartConfig(overrideAnim) {
   }
 
   var indexAxis = (type==='bar'&&horiz)?'y':undefined;
-  var textColor = bgTheme==='light'?'#333':'#ccc';
+  var axisColor = txtAxisColor || (bgTheme==='light'?'#333':'#ccc');
   var gridColor = bgTheme==='light'?'rgba(0,0,0,.08)':'rgba(255,255,255,.06)';
+  var titleColor = txtTitleColor || (bgTheme==='light'?'#333':'#a78bfa');
+  var legendColor = axisColor;
 
   var config = {
     type: type, data: { labels: labels, datasets: datasets },
@@ -1013,19 +1080,20 @@ function buildChartConfig(overrideAnim) {
       animation: false, // animation is rebuilt from meta at render time
       interaction: { mode: 'nearest', intersect: false },
       plugins: {
-        title: title ? { display:true, text:title, color:textColor, font:{size:20,weight:'bold'},padding:{bottom:16} } : {display:false},
-        legend: { display:showLegend, labels:{color:textColor,font:{size:12,weight:'600'},usePointStyle:true,pointStyle:'circle',padding:16} },
-        tooltip: { backgroundColor:'rgba(10,10,20,.9)',titleFont:{size:14,weight:'bold'},bodyFont:{size:13},padding:14,cornerRadius:10,
+        title: title ? { display:true, text:title, color:titleColor, font:{size:txtTitleSize,weight:'bold',family:txtFont},padding:{bottom:16} } : {display:false},
+        legend: { display:showLegend, labels:{color:legendColor,font:{size:txtLegendSize,weight:'600',family:txtFont},usePointStyle:true,pointStyle:'circle',padding:16} },
+        tooltip: { backgroundColor:'rgba(10,10,20,.9)',titleFont:{size:14,weight:'bold',family:txtFont},bodyFont:{size:13,family:txtFont},padding:14,cornerRadius:10,
           borderColor:'rgba(124,58,237,.3)',borderWidth:1,displayColors:true,boxPadding:6 }
       },
       scales: isPie ? {} : {
-        x: { ticks:{color:textColor,font:{size:11}}, grid:{color:gridColor}, border:{color:gridColor} },
-        y: { ticks:{color:textColor,font:{size:11}}, grid:{color:gridColor}, border:{color:gridColor} }
+        x: { ticks:{color:axisColor,font:{size:txtAxisSize,family:txtFont}}, grid:{color:gridColor}, border:{color:gridColor} },
+        y: { ticks:{color:axisColor,font:{size:txtAxisSize,family:txtFont}}, grid:{color:gridColor}, border:{color:gridColor} }
       }
     }
   };
 
   var meta = { title:title, type:type, xCol:xCol, yCols:yCols, groupBy:groupBy, palette:S.selectedPalette, bgTheme:bgTheme, horiz:horiz, showLegend:showLegend, showValues:showValues, barRadius:barRadius,
+    txtFont:txtFont, txtTitleSize:txtTitleSize, txtTitleColor:txtTitleColor, txtAxisSize:txtAxisSize, txtAxisColor:txtAxisColor, txtLegendSize:txtLegendSize,
     animType: document.getElementById('anim-type').value,
     animDuration: document.getElementById('anim-duration').value,
     animDelay: document.getElementById('anim-delay').value };
@@ -1077,6 +1145,7 @@ function renderChartsList() {
         '<button class="btn btn-xs btn-primary" onclick="replayAnim(' + i + ')">▶ Animar</button>' +
         '<button class="btn btn-xs btn-success" onclick="downloadChartPng(' + i + ')">📥 PNG</button>' +
         '<button class="btn btn-xs btn-warning" onclick="downloadChartPptx(' + i + ')">📑 PPTX</button>' +
+        '<button class="btn btn-xs btn-secondary" onclick="recordChartVideo(' + i + ')">🎬 Video</button>' +
         '<button class="btn btn-xs btn-secondary" onclick="toggleDesglose(\'' + ch.id + '\')">📋 Desglose</button>' +
         '<button class="btn btn-xs btn-secondary" onclick="duplicateChart(' + i + ')">Duplicar</button>' +
         '<button class="btn btn-xs btn-danger" onclick="removeChart(' + i + ')">Eliminar</button>' +
@@ -1277,6 +1346,64 @@ function exportPptxSingle() {
 function exportPptxAll() {
   if (!S.charts.length) return;
   exportPptxFromCharts(S.charts, 'charts-presentation.pptx');
+}
+
+// ═══════════════════════════════
+// VIDEO EXPORT (WebM)
+// ═══════════════════════════════
+function recordChartVideo(idx) {
+  var ch = S.charts[idx]; if (!ch) return;
+  _recordChartToVideo(ch, (ch.meta.title||'chart') + '.webm');
+}
+
+function exportVideo() {
+  var ch = S.charts[+document.getElementById('export-select').value]; if (!ch) return;
+  _recordChartToVideo(ch, (ch.meta.title||'chart') + '.webm');
+}
+
+function _recordChartToVideo(ch, filename) {
+  showToast('Grabando animación…');
+  var oc = document.createElement('canvas'); oc.width = 1280; oc.height = 720;
+  var ctx2d = oc.getContext('2d');
+
+  // Fill background
+  if (ch.meta.bgTheme === 'light') { ctx2d.fillStyle = '#ffffff'; }
+  else if (ch.meta.bgTheme === 'dark') { ctx2d.fillStyle = '#12121a'; }
+  else { ctx2d.fillStyle = '#ffffff'; }
+  ctx2d.fillRect(0, 0, 1280, 720);
+
+  // Get animation duration for recording length
+  var animDuration = +(ch.meta.animDuration || 1000);
+  var animDelay = +(ch.meta.animDelay || 100);
+  var numPoints = (ch.config.data.labels || []).length || 10;
+  var totalTime = animDuration + animDelay * numPoints + 500; // extra buffer
+
+  // Start stream + recorder
+  var stream = oc.captureStream(30); // 30 fps
+  var recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+  var chunks = [];
+  recorder.ondataavailable = function(e) { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = function() {
+    var blob = new Blob(chunks, { type: 'video/webm' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    showToast('Video descargado');
+  };
+
+  // Create chart with animation on the offscreen canvas
+  var cfg = cloneCfg(ch.config);
+  cfg.options.responsive = false;
+  cfg.options.animation = animFromMeta(ch.meta);
+
+  recorder.start();
+  var tmpChart = new Chart(oc, cfg);
+
+  // Stop recording after animation finishes
+  setTimeout(function() {
+    recorder.stop();
+    tmpChart.destroy();
+  }, totalTime);
 }
 
 // ═══════════════════════════════
