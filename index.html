@@ -275,13 +275,15 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
 
   <div id="data-info" style="display:none">
     <div class="stats-bar" id="stats-bar"></div>
-    <div style="margin:8px 0">
+    <div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" onclick="openPivotModal()">Pivotar datos</button>
+      <button class="btn btn-primary btn-sm" onclick="switchTab(1)">Crear gráfico</button>
+      <button class="btn btn-success btn-sm" onclick="quickExportCSV()">Exportar CSV</button>
+      <button class="btn btn-success btn-sm" onclick="quickExportJSON()">Exportar JSON</button>
     </div>
     <div class="data-table-wrap" style="max-height:360px;overflow-y:auto">
       <table class="data-table" id="data-table"></table>
     </div>
-    <button class="btn btn-primary" style="margin-top:16px" onclick="switchTab(1)">Configurar gráfico →</button>
   </div>
 </div>
 
@@ -910,6 +912,32 @@ function loadData(rows, sourceName) {
   analyzeColumns();
   renderDataTable();
   showToast((sourceName || '') + ': ' + rows.length + ' filas × ' + S.headers.length + ' columnas');
+}
+
+// ═══════════════════════════════
+// ═══════════════════════════════
+// QUICK EXPORTS FROM DATA TAB
+// ═══════════════════════════════
+function quickExportCSV() {
+  if (!S.rawData.length) { showToast('No hay datos', 'error'); return; }
+  var sep = ',';
+  var headers = S.headers;
+  var lines = [headers.join(sep)];
+  S.rawData.forEach(function(r) {
+    lines.push(headers.map(function(h) {
+      var v = String(r[h] == null ? '' : r[h]);
+      if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
+      return v;
+    }).join(sep));
+  });
+  dlText(lines.join('\n'), 'reporte-datos.csv', 'text/csv');
+  showToast(S.rawData.length + ' filas exportadas a CSV');
+}
+
+function quickExportJSON() {
+  if (!S.rawData.length) { showToast('No hay datos', 'error'); return; }
+  dlText(JSON.stringify(S.rawData, null, 2), 'reporte-datos.json', 'application/json');
+  showToast(S.rawData.length + ' filas exportadas a JSON');
 }
 
 // ═══════════════════════════════
@@ -2364,22 +2392,24 @@ function applyDetailLevel(rows, level, isMulti) {
 
     var base = isMulti ? { Partner: partner } : {};
 
+    var makePct = function(u,t) { return t > 0 ? Math.round(u/t*1000)/10 : 0; };
+
     summaryRows.push(Object.assign({}, base, {
-      Tipo: 'Signatures (all)', Usados: sigUsados, Restantes: sigRestantes, Total: sigTotal
+      Tipo: 'Signatures (all)', Usados: sigUsados, Restantes: sigRestantes, Total: sigTotal, Pct_Usado: makePct(sigUsados,sigTotal)
     }));
     summaryRows.push(Object.assign({}, base, {
-      Tipo: 'Certified Email (all)', Usados: emailUsados, Restantes: emailRestantes, Total: emailTotal
+      Tipo: 'Certified Email (all)', Usados: emailUsados, Restantes: emailRestantes, Total: emailTotal, Pct_Usado: makePct(emailUsados,emailTotal)
     }));
     summaryRows.push(Object.assign({}, base, {
-      Tipo: 'Certified SMS (all)', Usados: smsUsados, Restantes: smsRestantes, Total: smsTotal
+      Tipo: 'Certified SMS (all)', Usados: smsUsados, Restantes: smsRestantes, Total: smsTotal, Pct_Usado: makePct(smsUsados,smsTotal)
     }));
     if (otherUsados || otherRestantes || otherTotal) {
       summaryRows.push(Object.assign({}, base, {
-        Tipo: 'Other', Usados: otherUsados, Restantes: otherRestantes, Total: otherTotal
+        Tipo: 'Other', Usados: otherUsados, Restantes: otherRestantes, Total: otherTotal, Pct_Usado: makePct(otherUsados,otherTotal)
       }));
     }
     summaryRows.push(Object.assign({}, base, {
-      Tipo: 'TOTAL', Usados: totalUsados, Restantes: totalRestantes, Total: totalCreditos
+      Tipo: 'TOTAL', Usados: totalUsados, Restantes: totalRestantes, Total: totalCreditos, Pct_Usado: makePct(totalUsados,totalCreditos)
     }));
   });
 
@@ -2538,15 +2568,49 @@ function fetchAllPartners(tokens, cfg, callback) {
       // Credits rows
       if (r.credits) {
         var creditArr = Array.isArray(r.credits) ? r.credits : [r.credits];
+        var today = new Date();
+        today.setHours(0,0,0,0);
         creditArr.forEach(function(c) {
+          var used = c.used_credits||0;
+          var total = c.quantity||0;
+          var pct = total > 0 ? Math.round(used/total*1000)/10 : 0;
+          var desde = c.current_period&&c.current_period.from ? c.current_period.from.split('T')[0] : '—';
+          var hasta = c.current_period&&c.current_period.to ? c.current_period.to.split('T')[0] : '—';
+
+          // Calculate days remaining and burn rate alert
+          var diasRestantes = '—';
+          var alerta = '—';
+          if (hasta !== '—') {
+            var fechaFin = new Date(hasta+'T00:00:00');
+            var diff = Math.ceil((fechaFin - today) / (1000*60*60*24));
+            diasRestantes = diff;
+            if (desde !== '—' && used > 0) {
+              var fechaInicio = new Date(desde+'T00:00:00');
+              var diasTranscurridos = Math.max(1, Math.ceil((today - fechaInicio) / (1000*60*60*24)));
+              var tasaDiaria = used / diasTranscurridos;
+              if (tasaDiaria > 0) {
+                var remaining = c.remaining_credits||0;
+                var diasHastaAgotar = Math.floor(remaining / tasaDiaria);
+                if (diasHastaAgotar < diff) {
+                  alerta = 'Se agota en ~' + diasHastaAgotar + 'd (antes del vencimiento)';
+                } else {
+                  alerta = 'OK';
+                }
+              } else { alerta = 'OK (sin consumo)'; }
+            }
+          }
+
           var row = {
             Tipo: formatCreditType(c.type||'unknown'),
-            Usados: c.used_credits||0,
+            Usados: used,
             Restantes: c.remaining_credits||0,
-            Total: c.quantity||0,
+            Total: total,
+            Pct_Usado: pct,
             Periodo: c.period||'—',
-            Desde: c.current_period&&c.current_period.from ? c.current_period.from.split('T')[0] : '—',
-            Hasta: c.current_period&&c.current_period.to ? c.current_period.to.split('T')[0] : '—'
+            Desde: desde,
+            Hasta: hasta,
+            Dias_Restantes: diasRestantes,
+            Alerta: alerta
           };
           if (isMulti) row.Partner = label;
           rows.push(row);
