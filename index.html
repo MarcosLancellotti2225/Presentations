@@ -305,8 +305,28 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
         <select id="x-axis"></select>
       </div>
       <div class="form-group">
+        <label>Agrupar eje X por</label>
+        <select id="x-group">
+          <option value="">— Sin agrupar (valores únicos) —</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
         <label>Columnas de datos (Eje Y)</label>
         <div class="col-selector" id="y-cols"></div>
+      </div>
+      <div class="form-group">
+        <label>Agregación eje Y</label>
+        <select id="y-agg">
+          <option value="sum">Suma</option>
+          <option value="avg">Promedio</option>
+          <option value="count">Conteo</option>
+          <option value="min">Mínimo</option>
+          <option value="max">Máximo</option>
+          <option value="none">Sin agregar (una fila = un punto)</option>
+        </select>
       </div>
     </div>
 
@@ -974,6 +994,13 @@ function refreshConfigPanel() {
   if (S.headers.includes('_Archivo')) {
     gb.value = '_Archivo';
   }
+
+  // Populate X-group options
+  const xg = document.getElementById('x-group');
+  xg.innerHTML = '<option value="">— Sin agrupar —</option>';
+  S.headers.forEach(h => {
+    xg.innerHTML += '<option value="' + h + '">' + h + ' ' + (S.colTypes[h]==='number'?'(num)':'(txt)') + '</option>';
+  });
 }
 
 function renderChartTypeBtns() {
@@ -1068,6 +1095,77 @@ function getSelectedYCols() {
   return Array.from(document.querySelectorAll('#y-cols input:checked')).map(cb => cb.value);
 }
 
+// ── Data Aggregation Engine ──
+function aggregateData(data, xCol, xGroupCol, yCols, aggFn, groupByCol) {
+  // If no aggregation needed, return as-is
+  if (!xGroupCol && aggFn === 'none') return data;
+
+  // Determine the label column (what becomes X axis label)
+  var labelCol = xGroupCol || xCol;
+
+  // Build buckets: key = label value (+ groupBy if present)
+  var buckets = {};
+  var labelOrder = [];
+  var labelSeen = {};
+
+  data.forEach(function(r) {
+    var label = String(r[labelCol] || '');
+    var groupKey = groupByCol ? String(r[groupByCol] || 'Otro') : '__all__';
+    var bucketKey = groupKey + '|||' + label;
+
+    if (!buckets[bucketKey]) {
+      buckets[bucketKey] = { label: label, group: groupKey, values: {} };
+      yCols.forEach(function(yc) { buckets[bucketKey].values[yc] = []; });
+    }
+    yCols.forEach(function(yc) {
+      var v = Number(r[yc]);
+      if (!isNaN(v)) buckets[bucketKey].values[yc].push(v);
+    });
+
+    if (!labelSeen[label]) { labelSeen[label] = true; labelOrder.push(label); }
+  });
+
+  // Apply aggregation function
+  var result = [];
+  Object.keys(buckets).forEach(function(bk) {
+    var b = buckets[bk];
+    var row = {};
+    row[xCol] = b.label;
+    if (groupByCol) row[groupByCol] = b.group;
+    yCols.forEach(function(yc) {
+      var vals = b.values[yc];
+      if (!vals.length) { row[yc] = 0; return; }
+      switch (aggFn) {
+        case 'sum': row[yc] = vals.reduce(function(a,b){return a+b},0); break;
+        case 'avg': row[yc] = Math.round(vals.reduce(function(a,b){return a+b},0) / vals.length * 100) / 100; break;
+        case 'count': row[yc] = vals.length; break;
+        case 'min': row[yc] = Math.min.apply(null, vals); break;
+        case 'max': row[yc] = Math.max.apply(null, vals); break;
+        default: row[yc] = vals.reduce(function(a,b){return a+b},0);
+      }
+    });
+    // Copy other text columns from first matching row
+    data.some(function(r) {
+      if (String(r[labelCol]) === b.label) {
+        S.headers.forEach(function(h) {
+          if (!(h in row)) row[h] = r[h];
+        });
+        return true;
+      }
+    });
+    result.push(row);
+  });
+
+  // Sort by original label order
+  result.sort(function(a, b) {
+    var ia = labelOrder.indexOf(String(a[xCol]));
+    var ib = labelOrder.indexOf(String(b[xCol]));
+    return ia - ib;
+  });
+
+  return result;
+}
+
 function buildChartConfig(overrideAnim) {
   var type = S.selectedType;
   var xCol = document.getElementById('x-axis').value;
@@ -1092,12 +1190,21 @@ function buildChartConfig(overrideAnim) {
     showToast('Seleccioná al menos una columna numérica', 'error'); return null;
   }
 
+  // ── Aggregation: transform rawData based on x-group and y-agg ──
+  var xGroupCol = document.getElementById('x-group').value;
+  var yAgg = document.getElementById('y-agg').value;
+  var workData = S.rawData;
+
+  if (yAgg !== 'none' || xGroupCol) {
+    workData = aggregateData(S.rawData, xCol, xGroupCol, yCols, yAgg || 'sum', groupBy);
+  }
+
   var labels, datasets;
   var isPie = ['pie','doughnut','polarArea'].includes(type);
 
   if (groupBy && !isPie) {
     var groups = {};
-    S.rawData.forEach(function(r) {
+    workData.forEach(function(r) {
       var g = String(r[groupBy]||'Otro');
       if (!groups[g]) groups[g] = {};
       var lbl = String(r[xCol]||'');
@@ -1106,12 +1213,12 @@ function buildChartConfig(overrideAnim) {
     });
     labels = [];
     var seen = {};
-    S.rawData.forEach(function(r) { var l = String(r[xCol]||''); if (!seen[l]) { seen[l]=1; labels.push(l); } });
+    workData.forEach(function(r) { var l = String(r[xCol]||''); if (!seen[l]) { seen[l]=1; labels.push(l); } });
     var gNames = Object.keys(groups);
     datasets = gNames.map(function(gn, gi) {
       return {
         label: gn,
-        data: labels.map(function(lbl) { var v = groups[gn][lbl]||[0]; return v.reduce(function(a,b){return a+b;},0)/v.length; }),
+        data: labels.map(function(lbl) { var v = groups[gn][lbl]||[0]; return v.reduce(function(a,b){return a+b;},0)/(yAgg==='avg'?v.length:1); }),
         backgroundColor: palette[gi % palette.length] + (type==='line'?'22':'cc'),
         borderColor: palette[gi % palette.length],
         borderWidth: type==='line'?3:1,
@@ -1123,29 +1230,29 @@ function buildChartConfig(overrideAnim) {
       };
     });
   } else if (isPie) {
-    labels = S.rawData.map(function(r) { return String(r[xCol]||''); });
-    datasets = [{ data: S.rawData.map(function(r) { return Number(r[yCols[0]])||0; }),
+    labels = workData.map(function(r) { return String(r[xCol]||''); });
+    datasets = [{ data: workData.map(function(r) { return Number(r[yCols[0]])||0; }),
       backgroundColor: labels.map(function(_,i) { return palette[i%palette.length]+'cc'; }),
       borderColor: labels.map(function(_,i) { return palette[i%palette.length]; }),
       borderWidth:2, hoverOffset:12 }];
   } else if (type==='scatter') {
     var yCol = yCols[0]||S.headers.find(function(h){return S.colTypes[h]==='number';});
     labels = []; datasets = [{ label: xCol+' vs '+yCol,
-      data: S.rawData.map(function(r) { return {x:Number(r[xCol])||0, y:Number(r[yCol])||0}; }),
+      data: workData.map(function(r) { return {x:Number(r[xCol])||0, y:Number(r[yCol])||0}; }),
       backgroundColor: palette[0]+'cc', borderColor: palette[0], pointRadius:6, pointHoverRadius:10 }];
   } else if (type==='bubble') {
     var yCol2 = yCols[0]||S.headers.find(function(h){return S.colTypes[h]==='number';});
     var rCol = yCols[1]||yCol2; labels = [];
-    var maxR = Math.max.apply(null, S.rawData.map(function(r){return Math.abs(Number(r[rCol])||1);}));
+    var maxR = Math.max.apply(null, workData.map(function(r){return Math.abs(Number(r[rCol])||1);}));
     datasets = [{ label: xCol+' vs '+yCol2,
-      data: S.rawData.map(function(r) { return {x:Number(r[xCol])||0,y:Number(r[yCol2])||0,r:(Math.abs(Number(r[rCol])||1)/maxR)*20+3}; }),
+      data: workData.map(function(r) { return {x:Number(r[xCol])||0,y:Number(r[yCol2])||0,r:(Math.abs(Number(r[rCol])||1)/maxR)*20+3}; }),
       backgroundColor: palette[0]+'88', borderColor: palette[0] }];
   } else {
-    labels = S.rawData.map(function(r) { return String(r[xCol]||''); });
+    labels = workData.map(function(r) { return String(r[xCol]||''); });
     datasets = yCols.map(function(yc, yi) {
       return {
         label: yc,
-        data: S.rawData.map(function(r) { return Number(r[yc])||0; }),
+        data: workData.map(function(r) { return Number(r[yc])||0; }),
         backgroundColor: type==='line' ? palette[yi%palette.length]+'18' : palette[yi%palette.length]+'cc',
         borderColor: palette[yi%palette.length],
         borderWidth: type==='line'?3:1,
@@ -1183,7 +1290,7 @@ function buildChartConfig(overrideAnim) {
     }
   };
 
-  var meta = { title:title, type:type, xCol:xCol, yCols:yCols, groupBy:groupBy, palette:S.selectedPalette, bgTheme:bgTheme, horiz:horiz, showLegend:showLegend, showValues:showValues, barRadius:barRadius,
+  var meta = { title:title, type:type, xCol:xCol, yCols:yCols, groupBy:groupBy, xGroupCol:xGroupCol, yAgg:yAgg, palette:S.selectedPalette, bgTheme:bgTheme, horiz:horiz, showLegend:showLegend, showValues:showValues, barRadius:barRadius,
     txtFont:txtFont, txtTitleSize:txtTitleSize, txtTitleColor:txtTitleColor, txtAxisSize:txtAxisSize, txtAxisColor:txtAxisColor, txtLegendSize:txtLegendSize,
     animType: document.getElementById('anim-type').value,
     animDuration: document.getElementById('anim-duration').value,
