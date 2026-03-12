@@ -275,6 +275,9 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
 
   <div id="data-info" style="display:none">
     <div class="stats-bar" id="stats-bar"></div>
+    <div style="margin:8px 0">
+      <button class="btn btn-secondary btn-sm" onclick="openPivotModal()">Pivotar datos</button>
+    </div>
     <div class="data-table-wrap" style="max-height:360px;overflow-y:auto">
       <table class="data-table" id="data-table"></table>
     </div>
@@ -907,6 +910,113 @@ function loadData(rows, sourceName) {
   analyzeColumns();
   renderDataTable();
   showToast((sourceName || '') + ': ' + rows.length + ' filas × ' + S.headers.length + ' columnas');
+}
+
+// ═══════════════════════════════
+// PIVOT TABLE
+// ═══════════════════════════════
+function openPivotModal() {
+  if (!S.rawData.length) { showToast('No hay datos cargados', 'error'); return; }
+  var txtCols = S.headers.filter(function(h) { return S.colTypes[h] === 'text'; });
+  var numCols = S.headers.filter(function(h) { return S.colTypes[h] === 'number'; });
+  if (txtCols.length < 2) { showToast('Necesitás al menos 2 columnas de texto para pivotar', 'error'); return; }
+  if (!numCols.length) { showToast('Necesitás al menos 1 columna numérica', 'error'); return; }
+
+  var selOpts = function(cols, id, label, selected) {
+    var s = '<div class="form-group"><label>' + label + '</label><select id="' + id + '" style="width:100%;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">';
+    cols.forEach(function(c, i) { s += '<option value="' + c + '"' + (c === selected || (!selected && i === 0) ? ' selected' : '') + '>' + c + '</option>'; });
+    return s + '</select></div>';
+  };
+
+  // Auto-detect good defaults
+  var defaultRow = txtCols.find(function(h) { return h === 'Partner'; }) || txtCols[0];
+  var defaultPivot = txtCols.find(function(h) { return h === 'Tipo'; }) || txtCols[1] || txtCols[0];
+  var defaultVal = numCols.find(function(h) { return h === 'Usados'; }) || numCols[0];
+
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)this.remove()">' +
+    '<div class="portal-modal" style="max-width:480px">' +
+    '<h3>Pivotar datos</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Transforma filas en columnas. Cada valor único de la columna pivot se convierte en una columna separada.</p>' +
+    selOpts(txtCols, 'piv-rows', 'Filas (agrupa por)', defaultRow) +
+    selOpts(txtCols, 'piv-cols', 'Columnas (pivotar)', defaultPivot) +
+    selOpts(numCols, 'piv-val', 'Valores', defaultVal) +
+    '<div class="form-group"><label>Agregación</label><select id="piv-agg" style="width:100%;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
+      '<option value="sum">Suma</option><option value="avg">Promedio</option><option value="count">Conteo</option><option value="max">Máximo</option><option value="min">Mínimo</option>' +
+    '</select></div>' +
+    '<p style="font-size:11px;color:var(--text-dim);margin:8px 0"><b>Preview:</b> filas = <span style="color:var(--accent)">' + defaultRow + '</span>, columnas = valores de <span style="color:var(--accent)">' + defaultPivot + '</span>, celdas = <span style="color:var(--accent)">' + defaultVal + '</span></p>' +
+    '<div class="btn-group" style="margin-top:12px">' +
+      '<button class="btn btn-primary" onclick="executePivot()">Pivotar</button>' +
+      '<button class="btn btn-secondary" onclick="this.closest(\'.portal-modal-overlay\').remove()">Cancelar</button>' +
+    '</div></div></div>';
+  // Use token-modal-container if available, or append to body
+  var container = document.getElementById('token-modal-container');
+  if (container) container.innerHTML = html;
+  else document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function executePivot() {
+  var rowCol = document.getElementById('piv-rows').value;
+  var pivotCol = document.getElementById('piv-cols').value;
+  var valCol = document.getElementById('piv-val').value;
+  var aggFn = document.getElementById('piv-agg').value;
+
+  if (rowCol === pivotCol) { showToast('Filas y Columnas no pueden ser la misma', 'error'); return; }
+
+  // Get unique pivot values (column headers)
+  var pivotValues = [];
+  var pivotSeen = {};
+  S.rawData.forEach(function(r) {
+    var v = String(r[pivotCol] || '');
+    if (!pivotSeen[v]) { pivotSeen[v] = true; pivotValues.push(v); }
+  });
+
+  // Get unique row keys
+  var rowKeys = [];
+  var rowSeen = {};
+  S.rawData.forEach(function(r) {
+    var k = String(r[rowCol] || '');
+    if (!rowSeen[k]) { rowSeen[k] = true; rowKeys.push(k); }
+  });
+
+  // Build buckets: rowKey -> pivotVal -> [values]
+  var buckets = {};
+  S.rawData.forEach(function(r) {
+    var rk = String(r[rowCol] || '');
+    var pv = String(r[pivotCol] || '');
+    if (!buckets[rk]) buckets[rk] = {};
+    if (!buckets[rk][pv]) buckets[rk][pv] = [];
+    var v = Number(r[valCol]);
+    if (!isNaN(v)) buckets[rk][pv].push(v);
+  });
+
+  // Aggregate and build rows
+  var newRows = rowKeys.map(function(rk) {
+    var row = {};
+    row[rowCol] = rk;
+    pivotValues.forEach(function(pv) {
+      var vals = (buckets[rk] && buckets[rk][pv]) ? buckets[rk][pv] : [];
+      var result = 0;
+      if (!vals.length) { row[pv] = 0; return; }
+      switch (aggFn) {
+        case 'sum': result = vals.reduce(function(a,b){return a+b},0); break;
+        case 'avg': result = Math.round(vals.reduce(function(a,b){return a+b},0)/vals.length*100)/100; break;
+        case 'count': result = vals.length; break;
+        case 'max': result = Math.max.apply(null,vals); break;
+        case 'min': result = Math.min.apply(null,vals); break;
+      }
+      row[pv] = result;
+    });
+    return row;
+  });
+
+  // Close modal
+  var overlay = document.querySelector('.portal-modal-overlay');
+  if (overlay) overlay.remove();
+  var container = document.getElementById('token-modal-container');
+  if (container) container.innerHTML = '';
+
+  // Load pivoted data
+  loadData(newRows, 'Pivotado (' + valCol + ' por ' + pivotCol + ')');
 }
 
 // ═══════════════════════════════
