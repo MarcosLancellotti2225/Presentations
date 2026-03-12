@@ -277,9 +277,12 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
     <div class="stats-bar" id="stats-bar"></div>
     <div style="margin:8px 0;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" onclick="openPivotModal()">Pivotar datos</button>
+      <button class="btn btn-secondary btn-sm" onclick="openMergeUpload()">Combinar datos (Excel)</button>
       <button class="btn btn-primary btn-sm" onclick="switchTab(1)">Crear gráfico</button>
+      <button class="btn btn-success btn-sm" onclick="quickExportXLSX()">Exportar XLSX</button>
       <button class="btn btn-success btn-sm" onclick="quickExportCSV()">Exportar CSV</button>
       <button class="btn btn-success btn-sm" onclick="quickExportJSON()">Exportar JSON</button>
+      <input type="file" id="merge-file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleMergeFile(event)">
     </div>
     <div class="data-table-wrap" style="max-height:360px;overflow-y:auto">
       <table class="data-table" id="data-table"></table>
@@ -940,6 +943,181 @@ function quickExportJSON() {
   showToast(S.rawData.length + ' filas exportadas a JSON');
 }
 
+function quickExportXLSX() {
+  if (!S.rawData.length) { showToast('No hay datos', 'error'); return; }
+  if (typeof XLSX === 'undefined') { showToast('Librería XLSX no cargada', 'error'); return; }
+
+  var wb = XLSX.utils.book_new();
+
+  // Prepare data with formatted headers
+  var wsData = [S.headers];
+  S.rawData.forEach(function(r) {
+    wsData.push(S.headers.map(function(h) {
+      var v = r[h];
+      // Keep Pct_Usado as number for Excel formatting
+      if (h === 'Pct_Usado' && typeof v === 'string') {
+        var n = parseFloat(v);
+        return isNaN(n) ? v : n / 100;
+      }
+      return v == null ? '' : v;
+    }));
+  });
+
+  var ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  ws['!cols'] = S.headers.map(function(h) {
+    if (h === 'Partner') return { wch: 25 };
+    if (h === 'Tipo') return { wch: 22 };
+    if (h === 'Alerta') return { wch: 40 };
+    if (h === 'Pct_Usado') return { wch: 12 };
+    return { wch: 14 };
+  });
+
+  // Find Pct_Usado column index and apply percentage format + conditional colors
+  var pctIdx = S.headers.indexOf('Pct_Usado');
+  var alertIdx = S.headers.indexOf('Alerta');
+
+  if (pctIdx !== -1) {
+    for (var row = 1; row <= S.rawData.length; row++) {
+      var cellRef = XLSX.utils.encode_cell({ r: row, c: pctIdx });
+      if (ws[cellRef]) {
+        ws[cellRef].z = '0.0%';
+        var pv = typeof ws[cellRef].v === 'number' ? ws[cellRef].v * 100 : parseFloat(ws[cellRef].v);
+        if (pv >= 80) {
+          ws[cellRef].s = { font: { color: { rgb: 'FF0000' }, bold: true }, fill: { fgColor: { rgb: 'FFCCCC' } } };
+        } else if (pv >= 60) {
+          ws[cellRef].s = { font: { color: { rgb: 'CC7700' }, bold: true }, fill: { fgColor: { rgb: 'FFF3CD' } } };
+        }
+      }
+    }
+  }
+
+  // Style alert cells
+  if (alertIdx !== -1) {
+    for (var row2 = 1; row2 <= S.rawData.length; row2++) {
+      var cellRef2 = XLSX.utils.encode_cell({ r: row2, c: alertIdx });
+      if (ws[cellRef2] && String(ws[cellRef2].v || '').indexOf('Se agota') !== -1) {
+        ws[cellRef2].s = { font: { color: { rgb: 'FF0000' }, bold: true }, fill: { fgColor: { rgb: 'FFCCCC' } } };
+      }
+    }
+  }
+
+  // Header row styling
+  S.headers.forEach(function(h, ci) {
+    var cellRef3 = XLSX.utils.encode_cell({ r: 0, c: ci });
+    if (ws[cellRef3]) {
+      ws[cellRef3].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4A1D96' } }, alignment: { horizontal: 'center' } };
+    }
+  });
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
+
+  // Write with styles (requires xlsx-style features in full build)
+  XLSX.writeFile(wb, 'reporte-signaturit.xlsx');
+  showToast(S.rawData.length + ' filas exportadas a XLSX');
+}
+
+// ═══════════════════════════════
+// MERGE / COMBINE EXTERNAL DATA
+// ═══════════════════════════════
+function openMergeUpload() {
+  if (!S.rawData.length) { showToast('Cargá datos primero', 'error'); return; }
+  var container = document.getElementById('token-modal-container');
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:520px">' +
+    '<h3>Combinar datos desde Excel</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Subí un Excel con datos adicionales (ej: fechas de contrato, límites, notas). Se combinan con los datos actuales usando una columna en común.</p>' +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Columna de enlace en datos actuales</label>' +
+      '<select id="merge-key-current" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border);color-scheme:dark">' +
+      S.headers.map(function(h) {
+        var sel = (h === 'Partner' || h === 'Tipo') ? ' selected' : '';
+        return '<option value="' + h + '"' + sel + '>' + h + '</option>';
+      }).join('') +
+    '</select></div>' +
+    '<p style="font-size:11px;color:var(--text-dim);margin-bottom:12px">El Excel debe tener una columna con valores que coincidan con la columna seleccionada. Las demás columnas del Excel se agregan a cada fila.</p>' +
+    '<div class="btn-group" style="margin-top:12px">' +
+      '<button class="btn btn-primary" onclick="document.getElementById(\'merge-file-input\').click()">Seleccionar archivo</button>' +
+      '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button>' +
+    '</div></div></div>';
+  container.innerHTML = html;
+}
+
+function handleMergeFile(event) {
+  var file = event.target.files[0];
+  var inputEl = event.target;
+  if (!file) return;
+  var mergeKey = document.getElementById('merge-key-current').value;
+  closeReportModal();
+
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var externalRows;
+      if (file.name.endsWith('.csv')) {
+        var text = reader.result;
+        var lines = text.trim().split('\n');
+        var sep = lines[0].indexOf(';') !== -1 ? ';' : ',';
+        var headers = lines[0].split(sep).map(function(h){return h.trim().replace(/^"|"$/g,'')});
+        externalRows = [];
+        for (var i = 1; i < lines.length; i++) {
+          if (!lines[i].trim()) continue;
+          var vals = lines[i].split(sep).map(function(v){return v.trim().replace(/^"|"$/g,'')});
+          var row = {};
+          headers.forEach(function(h, j) { row[h] = vals[j] || ''; });
+          externalRows.push(row);
+        }
+      } else {
+        var data = new Uint8Array(reader.result);
+        var wb = XLSX.read(data, { type: 'array' });
+        var ws = wb.Sheets[wb.SheetNames[0]];
+        externalRows = XLSX.utils.sheet_to_json(ws);
+      }
+
+      if (!externalRows || !externalRows.length) { showToast('No se encontraron datos en el archivo', 'error'); inputEl.value=''; return; }
+
+      // Find matching key column in external data
+      var extHeaders = Object.keys(externalRows[0]);
+      var extKey = extHeaders.find(function(h) { return h === mergeKey; }) ||
+                   extHeaders.find(function(h) { return h.toLowerCase() === mergeKey.toLowerCase(); }) ||
+                   extHeaders[0];
+
+      // Build lookup from external data
+      var lookup = {};
+      externalRows.forEach(function(r) {
+        var key = String(r[extKey] || '').trim();
+        if (key) lookup[key] = r;
+      });
+
+      // Merge: add external columns to matching rows
+      var newCols = extHeaders.filter(function(h) { return h !== extKey && S.headers.indexOf(h) === -1; });
+      var matched = 0;
+      S.rawData.forEach(function(r) {
+        var key = String(r[mergeKey] || '').trim();
+        var ext = lookup[key];
+        if (ext) {
+          matched++;
+          newCols.forEach(function(nc) { r[nc] = ext[nc] != null ? ext[nc] : ''; });
+        } else {
+          newCols.forEach(function(nc) { if (r[nc] == null) r[nc] = ''; });
+        }
+      });
+
+      // Update headers and re-render
+      newCols.forEach(function(nc) { if (S.headers.indexOf(nc) === -1) S.headers.push(nc); });
+      analyzeColumns();
+      renderDataTable();
+      showToast(matched + ' filas combinadas, ' + newCols.length + ' columna(s) nueva(s): ' + newCols.join(', '));
+    } catch(err) {
+      showToast('Error leyendo archivo: ' + err.message, 'error');
+    }
+    inputEl.value = '';
+  };
+
+  if (file.name.endsWith('.csv')) reader.readAsText(file);
+  else reader.readAsArrayBuffer(file);
+}
+
 // ═══════════════════════════════
 // PIVOT TABLE
 // ═══════════════════════════════
@@ -1092,8 +1270,23 @@ function renderDataTable() {
   });
   html += '</tr></thead><tbody>';
   S.rawData.slice(0, 50).forEach((r, i) => {
-    html += '<tr><td class="row-num">' + (i+1) + '</td>';
-    S.headers.forEach(h => html += '<td>' + esc(String(r[h]??'')) + '</td>');
+    // Check if this row has Pct_Usado >= 80%
+    var pctVal = r.Pct_Usado != null ? parseFloat(String(r.Pct_Usado)) : -1;
+    var rowDanger = pctVal >= 80;
+    var rowWarn = pctVal >= 60 && pctVal < 80;
+    var rowStyle = rowDanger ? ' style="background:rgba(239,68,68,.15)"' : (rowWarn ? ' style="background:rgba(245,158,11,.08)"' : '');
+    html += '<tr' + rowStyle + '><td class="row-num">' + (i+1) + '</td>';
+    S.headers.forEach(h => {
+      var val = String(r[h]??'');
+      var cellStyle = '';
+      if (h === 'Pct_Usado') {
+        var pv = parseFloat(val);
+        if (pv >= 80) cellStyle = ' style="color:#ef4444;font-weight:700"';
+        else if (pv >= 60) cellStyle = ' style="color:#f59e0b;font-weight:600"';
+      }
+      if (h === 'Alerta' && val.indexOf('Se agota') !== -1) cellStyle = ' style="color:#ef4444;font-weight:700"';
+      html += '<td' + cellStyle + '>' + esc(val) + '</td>';
+    });
     html += '</tr>';
   });
   if (S.rawData.length > 50) html += '<tr><td colspan="' + (S.headers.length+1) + '" style="text-align:center;color:var(--text-dim)">… y ' + (S.rawData.length-50) + ' filas más</td></tr>';
@@ -2394,7 +2587,7 @@ function applyDetailLevel(rows, level, isMulti) {
 
     var base = isMulti ? { Partner: partner } : {};
 
-    var makePct = function(u,t) { return t > 0 ? Math.round(u/t*1000)/10 : 0; };
+    var makePct = function(u,t) { return t > 0 ? Math.round(u/t*1000)/10 + '%' : '0%'; };
 
     summaryRows.push(Object.assign({}, base, {
       Tipo: 'Signatures (all)', Usados: sigUsados, Restantes: sigRestantes, Total: sigTotal, Pct_Usado: makePct(sigUsados,sigTotal)
@@ -2575,7 +2768,7 @@ function fetchAllPartners(tokens, cfg, callback) {
         creditArr.forEach(function(c) {
           var used = c.used_credits||0;
           var total = c.quantity||0;
-          var pct = total > 0 ? Math.round(used/total*1000)/10 : 0;
+          var pct = total > 0 ? Math.round(used/total*1000)/10 + '%' : '0%';
           var desde = c.current_period&&c.current_period.from ? c.current_period.from.split('T')[0] : '';
           var hasta = c.current_period&&c.current_period.to ? c.current_period.to.split('T')[0] : '';
 
