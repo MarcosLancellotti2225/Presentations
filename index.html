@@ -2034,11 +2034,30 @@ function importTokenFile(event) {
 
 function exportTokens() {
   if (portalTokens.length === 0) { showToast('No hay tokens para exportar','error'); return; }
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeTokenModal()">' +
+    '<div class="portal-modal" style="max-width:420px">' +
+    '<h3>Exportar partners</h3>' +
+    '<div style="display:flex;flex-direction:column;gap:10px;margin:16px 0">' +
+      '<button class="btn btn-primary" onclick="doExportTokens(false)">Exportar sin tokens (solo metadata)</button>' +
+      '<button class="btn btn-success" onclick="doExportTokens(true)">Exportar con tokens (para re-importar)</button>' +
+    '</div>' +
+    '<p style="font-size:11px;color:var(--text-dim);margin-top:8px">Con tokens: el archivo incluye los Bearer tokens. Guardalo de forma segura.<br>Sin tokens: solo partner, entorno, estado y notas.</p>' +
+    '<div class="btn-group" style="margin-top:12px">' +
+      '<button class="btn btn-secondary" onclick="closeTokenModal()">Cancelar</button></div>' +
+    '</div></div>';
+  document.getElementById('token-modal-container').innerHTML = html;
+}
+
+function doExportTokens(includeTokens) {
+  closeTokenModal();
   var data = portalTokens.map(function(t) {
-    return { partner:t.partner, env:t.env, status:t.status, notes:t.notes||'' };
+    var row = { partner:t.partner, env:t.env, status:t.status, notes:t.notes||'' };
+    if (includeTokens) row.token = t.token || '';
+    return row;
   });
-  dlText(JSON.stringify(data, null, 2), 'signaturit-tokens.json', 'application/json');
-  showToast('Tokens exportados (sin tokens sensibles)');
+  var filename = includeTokens ? 'signaturit-partners-full.json' : 'signaturit-partners.json';
+  dlText(JSON.stringify(data, null, 2), filename, 'application/json');
+  showToast(portalTokens.length + ' partners exportados' + (includeTokens ? ' (con tokens)' : ''));
 }
 
 // ═══════════════════════════════
