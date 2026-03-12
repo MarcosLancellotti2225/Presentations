@@ -18,7 +18,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 button{cursor:pointer;font-family:inherit;border:none;outline:none;transition:all .25s}
 input,textarea,select{font-family:inherit;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:10px 14px;outline:none;transition:border-color .2s;font-size:14px}
 input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,58,237,.15)}
-select{cursor:pointer}
+select{cursor:pointer;color-scheme:dark}
 textarea{resize:vertical}
 label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px}
 
@@ -951,7 +951,7 @@ function openPivotModal() {
   if (!numCols.length) { showToast('Necesitás al menos 1 columna numérica', 'error'); return; }
 
   var selOpts = function(cols, id, label, selected) {
-    var s = '<div class="form-group"><label>' + label + '</label><select id="' + id + '" style="width:100%;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">';
+    var s = '<div class="form-group"><label>' + label + '</label><select id="' + id + '" style="width:100%;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border);color-scheme:dark">';
     cols.forEach(function(c, i) { s += '<option value="' + c + '"' + (c === selected || (!selected && i === 0) ? ' selected' : '') + '>' + c + '</option>'; });
     return s + '</select></div>';
   };
@@ -968,7 +968,7 @@ function openPivotModal() {
     selOpts(txtCols, 'piv-rows', 'Filas (agrupa por)', defaultRow) +
     selOpts(txtCols, 'piv-cols', 'Columnas (pivotar)', defaultPivot) +
     selOpts(numCols, 'piv-val', 'Valores', defaultVal) +
-    '<div class="form-group"><label>Agregación</label><select id="piv-agg" style="width:100%;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
+    '<div class="form-group"><label>Agregación</label><select id="piv-agg" style="width:100%;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border);color-scheme:dark">' +
       '<option value="sum">Suma</option><option value="avg">Promedio</option><option value="count">Conteo</option><option value="max">Máximo</option><option value="min">Mínimo</option>' +
     '</select></div>' +
     '<p style="font-size:11px;color:var(--text-dim);margin:8px 0"><b>Preview:</b> filas = <span style="color:var(--accent)">' + defaultRow + '</span>, columnas = valores de <span style="color:var(--accent)">' + defaultPivot + '</span>, celdas = <span style="color:var(--accent)">' + defaultVal + '</span></p>' +
@@ -1939,7 +1939,9 @@ function cloneCfg(cfg) { return JSON.parse(JSON.stringify(cfg)); }
 
 function dlText(text, fn, mime) {
   var a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text],{type:mime}));
+  // Add BOM for CSV so Excel reads UTF-8 correctly
+  var prefix = (mime === 'text/csv') ? '\uFEFF' : '';
+  a.href = URL.createObjectURL(new Blob([prefix + text],{type:mime+';charset=utf-8'}));
   a.download = fn; a.click();
 }
 function dlDataUrl(du, fn) { var a = document.createElement('a'); a.href=du; a.download=fn; a.click(); }
@@ -2574,17 +2576,17 @@ function fetchAllPartners(tokens, cfg, callback) {
           var used = c.used_credits||0;
           var total = c.quantity||0;
           var pct = total > 0 ? Math.round(used/total*1000)/10 : 0;
-          var desde = c.current_period&&c.current_period.from ? c.current_period.from.split('T')[0] : '—';
-          var hasta = c.current_period&&c.current_period.to ? c.current_period.to.split('T')[0] : '—';
+          var desde = c.current_period&&c.current_period.from ? c.current_period.from.split('T')[0] : '';
+          var hasta = c.current_period&&c.current_period.to ? c.current_period.to.split('T')[0] : '';
 
           // Calculate days remaining and burn rate alert
-          var diasRestantes = '—';
-          var alerta = '—';
-          if (hasta !== '—') {
+          var diasRestantes = '';
+          var alerta = '';
+          if (hasta) {
             var fechaFin = new Date(hasta+'T00:00:00');
             var diff = Math.ceil((fechaFin - today) / (1000*60*60*24));
             diasRestantes = diff;
-            if (desde !== '—' && used > 0) {
+            if (desde && used > 0) {
               var fechaInicio = new Date(desde+'T00:00:00');
               var diasTranscurridos = Math.max(1, Math.ceil((today - fechaInicio) / (1000*60*60*24)));
               var tasaDiaria = used / diasTranscurridos;
@@ -2606,7 +2608,7 @@ function fetchAllPartners(tokens, cfg, callback) {
             Restantes: c.remaining_credits||0,
             Total: total,
             Pct_Usado: pct,
-            Periodo: c.period||'—',
+            Periodo: c.period||'',
             Desde: desde,
             Hasta: hasta,
             Dias_Restantes: diasRestantes,
@@ -2618,17 +2620,17 @@ function fetchAllPartners(tokens, cfg, callback) {
       }
       // Counts
       if (r.sigCount) {
-        var row = { Tipo:'Signatures (total)', Usados:r.sigCount.count||0, Restantes:'—', Total:r.sigCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        var row = { Tipo:'Signatures (total)', Usados:r.sigCount.count||0, Restantes:'', Total:r.sigCount.count||0, Periodo:'acumulado', Desde:'', Hasta:'' };
         if (isMulti) row.Partner = label;
         rows.push(row);
       }
       if (r.emailCount) {
-        var row = { Tipo:'Certified Email (total)', Usados:r.emailCount.count||0, Restantes:'—', Total:r.emailCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        var row = { Tipo:'Certified Email (total)', Usados:r.emailCount.count||0, Restantes:'', Total:r.emailCount.count||0, Periodo:'acumulado', Desde:'', Hasta:'' };
         if (isMulti) row.Partner = label;
         rows.push(row);
       }
       if (r.smsCount) {
-        var row = { Tipo:'Certified SMS (total)', Usados:r.smsCount.count||0, Restantes:'—', Total:r.smsCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        var row = { Tipo:'Certified SMS (total)', Usados:r.smsCount.count||0, Restantes:'', Total:r.smsCount.count||0, Periodo:'acumulado', Desde:'', Hasta:'' };
         if (isMulti) row.Partner = label;
         rows.push(row);
       }
@@ -2636,7 +2638,7 @@ function fetchAllPartners(tokens, cfg, callback) {
       if (r.sigStatuses) {
         r.sigStatuses.forEach(function(s) {
           var statusLabel = { completed:'Completed', expired:'Expired', canceled:'Canceled', declined:'Declined', in_queue:'In Queue', signing:'Signing' };
-          var row = { Tipo:'Signature — '+(statusLabel[s.status]||s.status), Usados:s.count, Restantes:'—', Total:s.count, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+          var row = { Tipo:'Signature - '+(statusLabel[s.status]||s.status), Usados:s.count, Restantes:'', Total:s.count, Periodo:'acumulado', Desde:'', Hasta:'' };
           if (isMulti) row.Partner = label;
           rows.push(row);
         });
