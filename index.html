@@ -2078,11 +2078,11 @@ function openReportModal(ids) {
     '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Partners: '+esc(names)+'</p>' +
     '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Fuentes de datos</label>' +
       '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
-        '<label style="font-size:13px"><input type="checkbox" id="rpt-credits" checked> Créditos (uso por tipo)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="rpt-sig-count" checked> Firmas (conteo total)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="rpt-email-count" checked> Emails certificados (conteo)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="rpt-sms-count" checked> SMS certificados (conteo)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="rpt-sig-status"> Firmas por estado (completed, expired, canceled...)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-credits" checked> Credits (usage by type)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-sig-count" checked> Signatures (count)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-email-count" checked> Certified Email (total) (conteo)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-sms-count" checked> Certified SMS (total) (conteo)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-sig-status"> Signatures by status (completed, expired, canceled...)</label>' +
       '</div></div>' +
     '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Ordenar por</label>' +
       '<select id="rpt-sort" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
@@ -2200,11 +2200,11 @@ function openCsvModal(ids) {
     '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Partners: '+esc(names)+'</p>' +
     '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Fuentes de datos</label>' +
       '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
-        '<label style="font-size:13px"><input type="checkbox" id="csv-credits" checked> Créditos</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="csv-sig-count" checked> Firmas (conteo)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="csv-email-count" checked> Emails certificados</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="csv-sms-count" checked> SMS certificados</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="csv-sig-status"> Firmas por estado</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-credits" checked> Credits</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-sig-count" checked> Signatures (count)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-email-count" checked> Certified Email (total)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-sms-count" checked> Certified SMS (total)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-sig-status"> Signatures by status</label>' +
       '</div></div>' +
     '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Ordenar por</label>' +
       '<select id="csv-sort" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
@@ -2353,7 +2353,13 @@ function executeCsvDownload(ids) {
 // CORE FETCH ENGINE
 // ═══════════════════════════════
 function fetchAllPartners(tokens, cfg, callback) {
-  var allPromises = tokens.map(function(t) {
+  // Filter out tokens without credentials
+  var validTokens = tokens.filter(function(t) { return t.token && t.token.length > 0; });
+  var skipped = tokens.length - validTokens.length;
+  if (skipped > 0) showToast(skipped + ' partner(s) sin token — omitidos', 'warning');
+  if (validTokens.length === 0) { showToast('Ningún partner tiene token cargado. Editá los partners para agregar sus tokens.', 'error'); callback([], []); return; }
+
+  var allPromises = validTokens.map(function(t) {
     var baseUrl = t.env === 'production' ? 'https://api.signaturit.com/v3' : 'https://api.sandbox.signaturit.com/v3';
     var hdrs = { 'Authorization': 'Bearer ' + t.token };
     var fetches = [];
@@ -2415,25 +2421,25 @@ function fetchAllPartners(tokens, cfg, callback) {
       }
       // Counts
       if (r.sigCount) {
-        var row = { Tipo:'Firmas (total)', Usados:r.sigCount.count||0, Restantes:'—', Total:r.sigCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        var row = { Tipo:'Signatures (total)', Usados:r.sigCount.count||0, Restantes:'—', Total:r.sigCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
         if (isMulti) row.Partner = label;
         rows.push(row);
       }
       if (r.emailCount) {
-        var row = { Tipo:'Emails certificados', Usados:r.emailCount.count||0, Restantes:'—', Total:r.emailCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        var row = { Tipo:'Certified Email (total)', Usados:r.emailCount.count||0, Restantes:'—', Total:r.emailCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
         if (isMulti) row.Partner = label;
         rows.push(row);
       }
       if (r.smsCount) {
-        var row = { Tipo:'SMS certificados', Usados:r.smsCount.count||0, Restantes:'—', Total:r.smsCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+        var row = { Tipo:'Certified SMS (total)', Usados:r.smsCount.count||0, Restantes:'—', Total:r.smsCount.count||0, Periodo:'acumulado', Desde:'—', Hasta:'—' };
         if (isMulti) row.Partner = label;
         rows.push(row);
       }
       // Status breakdown
       if (r.sigStatuses) {
         r.sigStatuses.forEach(function(s) {
-          var statusLabel = { completed:'Completadas', expired:'Expiradas', canceled:'Canceladas', declined:'Rechazadas', in_queue:'En cola', signing:'En firma' };
-          var row = { Tipo:'Firma — '+(statusLabel[s.status]||s.status), Usados:s.count, Restantes:'—', Total:s.count, Periodo:'acumulado', Desde:'—', Hasta:'—' };
+          var statusLabel = { completed:'Completed', expired:'Expired', canceled:'Canceled', declined:'Declined', in_queue:'In Queue', signing:'Signing' };
+          var row = { Tipo:'Signature — '+(statusLabel[s.status]||s.status), Usados:s.count, Restantes:'—', Total:s.count, Periodo:'acumulado', Desde:'—', Hasta:'—' };
           if (isMulti) row.Partner = label;
           rows.push(row);
         });
@@ -2470,14 +2476,14 @@ function fetchAllPartners(tokens, cfg, callback) {
 
 function formatCreditType(type) {
   var map = {
-    'simple_signature': 'Firma Simple',
-    'advanced_signature': 'Firma Avanzada',
-    'certified_email': 'Email Certificado',
-    'certified_sms': 'SMS Certificado',
-    'certified_file': 'Archivo Certificado',
-    'photo_id': 'Photo ID',
+    'simple_signature': 'Simple Signature',
+    'advanced_signature': 'Advanced Signature',
+    'certified_email': 'Certified Email',
+    'certified_sms': 'Certified SMS',
+    'certified_file': 'Certified File',
+    'photo_id': 'Photo Id Validation',
     'dcf_spot': 'DCF Spot',
-    'sms_credits': 'Créditos SMS',
+    'sms_credits': 'SMS Validation',
     'batch': 'Batch'
   };
   return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, function(l){return l.toUpperCase()});
