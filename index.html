@@ -2080,10 +2080,16 @@ function openReportModal(ids) {
       '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
         '<label style="font-size:13px"><input type="checkbox" id="rpt-credits" checked> Credits (usage by type)</label>' +
         '<label style="font-size:13px"><input type="checkbox" id="rpt-sig-count" checked> Signatures (count)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="rpt-email-count" checked> Certified Email (total) (conteo)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="rpt-sms-count" checked> Certified SMS (total) (conteo)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-email-count" checked> Certified Email (count)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="rpt-sms-count" checked> Certified SMS (count)</label>' +
         '<label style="font-size:13px"><input type="checkbox" id="rpt-sig-status"> Signatures by status (completed, expired, canceled...)</label>' +
       '</div></div>' +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Nivel de detalle</label>' +
+      '<select id="rpt-detail" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
+        '<option value="full">Desglose completo (cada tipo de crédito por separado)</option>' +
+        '<option value="summary">Resumen (totales sumados por partner)</option>' +
+        '<option value="both">Desglose + Resumen (ambos)</option>' +
+      '</select></div>' +
     '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Ordenar por</label>' +
       '<select id="rpt-sort" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
         '<option value="">Sin orden especial</option>' +
@@ -2115,6 +2121,7 @@ function closeReportModal() { document.getElementById('token-modal-container').i
 function executeReport(ids) {
   var viewEl = document.getElementById('rpt-view');
   var viewMode = viewEl ? viewEl.value : 'detail';
+  var detailLevel = document.getElementById('rpt-detail').value;
   var cfg = {
     credits: document.getElementById('rpt-credits').checked,
     sigCount: document.getElementById('rpt-sig-count').checked,
@@ -2131,21 +2138,20 @@ function executeReport(ids) {
   fetchAllPartners(tokens, cfg, function(rows, errors) {
     if (rows.length === 0) { if (errors.length) showToast('Errores: '+errors.join(', '),'error'); return; }
 
-    var finalRows = [];
+    // Apply detail level
+    var processedRows = applyDetailLevel(rows, detailLevel, isMulti);
 
+    // Apply multi-partner view mode
+    var finalRows = [];
     if (!isMulti || viewMode === 'detail') {
-      // Just detail rows
-      finalRows = rows;
+      finalRows = processedRows;
     } else if (viewMode === 'compare') {
-      // One row per partner with summed totals
-      finalRows = buildCompareRows(rows);
+      finalRows = buildCompareRows(processedRows);
     } else if (viewMode === 'unified') {
-      // Totals grouped by Tipo
-      finalRows = buildUnifiedRows(rows);
+      finalRows = buildUnifiedRows(processedRows);
     } else if (viewMode === 'both') {
-      // Detail rows + separator + totals
-      rows.forEach(function(r) { var row = Object.assign({}, r); row.Seccion = 'Detalle'; finalRows.push(row); });
-      var totals = buildUnifiedRows(rows);
+      processedRows.forEach(function(r) { var row = Object.assign({}, r); row.Seccion = 'Detalle'; finalRows.push(row); });
+      var totals = buildUnifiedRows(processedRows);
       totals.forEach(function(r) { r.Seccion = 'Totales'; finalRows.push(r); });
     }
 
@@ -2186,6 +2192,77 @@ function buildCompareRows(rows) {
   return Object.keys(partnerMap).map(function(k){ return partnerMap[k]; });
 }
 
+// ── Detail Level: full / summary / both ──
+function applyDetailLevel(rows, level, isMulti) {
+  if (level === 'full') return rows;
+
+  // Build summary: one row per partner (or single row if not multi)
+  var partnerGroups = {};
+  rows.forEach(function(r) {
+    var p = isMulti ? (r.Partner || 'Unknown') : 'Total';
+    if (!partnerGroups[p]) partnerGroups[p] = [];
+    partnerGroups[p].push(r);
+  });
+
+  var summaryRows = [];
+  Object.keys(partnerGroups).forEach(function(partner) {
+    var pRows = partnerGroups[partner];
+    // Sum by category: credits, signatures, emails, sms
+    var totalUsados = 0, totalRestantes = 0, totalCreditos = 0;
+    var sigUsados = 0, sigRestantes = 0, sigTotal = 0;
+    var emailUsados = 0, emailRestantes = 0, emailTotal = 0;
+    var smsUsados = 0, smsRestantes = 0, smsTotal = 0;
+    var otherUsados = 0, otherRestantes = 0, otherTotal = 0;
+
+    pRows.forEach(function(r) {
+      var used = typeof r.Usados === 'number' ? r.Usados : 0;
+      var rem = typeof r.Restantes === 'number' ? r.Restantes : 0;
+      var tot = typeof r.Total === 'number' ? r.Total : 0;
+      var tipo = r.Tipo || '';
+
+      totalUsados += used; totalRestantes += rem; totalCreditos += tot;
+
+      if (tipo.indexOf('Signature') !== -1 || tipo.indexOf('Batch') !== -1) {
+        sigUsados += used; sigRestantes += rem; sigTotal += tot;
+      } else if (tipo.indexOf('Email') !== -1) {
+        emailUsados += used; emailRestantes += rem; emailTotal += tot;
+      } else if (tipo.indexOf('SMS') !== -1) {
+        smsUsados += used; smsRestantes += rem; smsTotal += tot;
+      } else {
+        otherUsados += used; otherRestantes += rem; otherTotal += tot;
+      }
+    });
+
+    var base = isMulti ? { Partner: partner } : {};
+
+    summaryRows.push(Object.assign({}, base, {
+      Tipo: 'Signatures (all)', Usados: sigUsados, Restantes: sigRestantes, Total: sigTotal
+    }));
+    summaryRows.push(Object.assign({}, base, {
+      Tipo: 'Certified Email (all)', Usados: emailUsados, Restantes: emailRestantes, Total: emailTotal
+    }));
+    summaryRows.push(Object.assign({}, base, {
+      Tipo: 'Certified SMS (all)', Usados: smsUsados, Restantes: smsRestantes, Total: smsTotal
+    }));
+    if (otherUsados || otherRestantes || otherTotal) {
+      summaryRows.push(Object.assign({}, base, {
+        Tipo: 'Other', Usados: otherUsados, Restantes: otherRestantes, Total: otherTotal
+      }));
+    }
+    summaryRows.push(Object.assign({}, base, {
+      Tipo: 'TOTAL', Usados: totalUsados, Restantes: totalRestantes, Total: totalCreditos
+    }));
+  });
+
+  if (level === 'summary') return summaryRows;
+
+  // 'both' — detail + summary
+  var combined = [];
+  rows.forEach(function(r) { var row = Object.assign({}, r); row.Seccion = 'Desglose'; combined.push(row); });
+  summaryRows.forEach(function(r) { r.Seccion = 'Resumen'; combined.push(r); });
+  return combined;
+}
+
 // ═══════════════════════════════
 // CSV MODAL & DOWNLOAD
 // ═══════════════════════════════
@@ -2202,10 +2279,16 @@ function openCsvModal(ids) {
       '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">' +
         '<label style="font-size:13px"><input type="checkbox" id="csv-credits" checked> Credits</label>' +
         '<label style="font-size:13px"><input type="checkbox" id="csv-sig-count" checked> Signatures (count)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="csv-email-count" checked> Certified Email (total)</label>' +
-        '<label style="font-size:13px"><input type="checkbox" id="csv-sms-count" checked> Certified SMS (total)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-email-count" checked> Certified Email (count)</label>' +
+        '<label style="font-size:13px"><input type="checkbox" id="csv-sms-count" checked> Certified SMS (count)</label>' +
         '<label style="font-size:13px"><input type="checkbox" id="csv-sig-status"> Signatures by status</label>' +
       '</div></div>' +
+    '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Nivel de detalle</label>' +
+      '<select id="csv-detail" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
+        '<option value="full">Desglose completo (cada tipo por separado)</option>' +
+        '<option value="summary">Resumen (totales sumados por partner)</option>' +
+        '<option value="both">Desglose + Resumen (ambos)</option>' +
+      '</select></div>' +
     '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Ordenar por</label>' +
       '<select id="csv-sort" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
         '<option value="">Sin orden especial</option>' +
@@ -2217,13 +2300,6 @@ function openCsvModal(ids) {
         '<option value="restantes-asc">Menos restantes primero</option>' +
         '<option value="restantes-desc">Más restantes primero</option>' +
       '</select></div>' +
-    (isMulti ?
-    '<div style="margin-bottom:12px;padding:10px;border-radius:8px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2)">' +
-      '<label style="font-weight:600;font-size:13px;color:var(--accent)">Estructura del CSV (multi-partner)</label>' +
-      '<p style="font-size:12px;color:var(--text-dim);margin:6px 0 0">El CSV incluirá automáticamente:<br>' +
-        '• <b>Detalle por partner</b> — filas individuales de cada uno<br>' +
-        '• <b>Totales unificados</b> — suma agrupada por tipo de envío</p>' +
-    '</div>' : '') +
     '<div style="margin-bottom:12px"><label style="font-weight:600;font-size:13px">Separador</label>' +
       '<select id="csv-sep" style="width:100%;margin-top:4px;padding:6px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)">' +
         '<option value=",">Coma (,)</option>' +
@@ -2238,6 +2314,7 @@ function openCsvModal(ids) {
 }
 
 function executeCsvDownload(ids) {
+  var detailLevel = document.getElementById('csv-detail').value;
   var cfg = {
     credits: document.getElementById('csv-credits').checked,
     sigCount: document.getElementById('csv-sig-count').checked,
@@ -2255,91 +2332,18 @@ function executeCsvDownload(ids) {
   showToast('Obteniendo datos para CSV...');
   fetchAllPartners(tokens, cfg, function(rows, errors) {
     if (rows.length > 0) {
+      // Apply detail level
+      rows = applyDetailLevel(rows, detailLevel, isMulti);
       var csvLines = [];
-
-      if (isMulti) {
-        // === SECTION 1: Detail per partner ===
-        var headers = Object.keys(rows[0]);
-        csvLines.push('DETALLE POR PARTNER');
-        csvLines.push(headers.join(sep));
-        // Group rows by partner for cleaner output
-        var partnerGroups = {};
-        rows.forEach(function(r) {
-          var p = r.Partner || 'Unknown';
-          if (!partnerGroups[p]) partnerGroups[p] = [];
-          partnerGroups[p].push(r);
-        });
-        Object.keys(partnerGroups).forEach(function(partner) {
-          partnerGroups[partner].forEach(function(r) {
-            csvLines.push(headers.map(function(h) {
-              var v = String(r[h] == null ? '' : r[h]);
-              if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
-              return v;
-            }).join(sep));
-          });
-        });
-
-        // === SECTION 2: Totals unified by Tipo ===
-        csvLines.push('');
-        csvLines.push('TOTALES UNIFICADOS POR TIPO');
-        var totHeaders = ['Tipo','Usados','Restantes','Total'];
-        csvLines.push(totHeaders.join(sep));
-        var grouped = {};
-        rows.forEach(function(r) {
-          var key = r.Tipo;
-          if (!grouped[key]) { grouped[key] = { Tipo:r.Tipo, Usados:0, Restantes:0, Total:0 }; }
-          grouped[key].Usados += (typeof r.Usados === 'number' ? r.Usados : 0);
-          grouped[key].Restantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
-          grouped[key].Total += (typeof r.Total === 'number' ? r.Total : 0);
-        });
-        Object.keys(grouped).forEach(function(k) {
-          var g = grouped[k];
-          csvLines.push(totHeaders.map(function(h) {
-            var v = String(g[h] == null ? '' : g[h]);
-            if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
-            return v;
-          }).join(sep));
-        });
-
-        // === SECTION 3: Grand total ===
-        csvLines.push('');
-        csvLines.push('GRAN TOTAL');
-        var grandUsados = 0, grandRestantes = 0, grandTotal = 0;
-        rows.forEach(function(r) {
-          grandUsados += (typeof r.Usados === 'number' ? r.Usados : 0);
-          grandRestantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
-          grandTotal += (typeof r.Total === 'number' ? r.Total : 0);
-        });
-        csvLines.push(['Todos los tipos','Usados','Restantes','Total'].join(sep));
-        csvLines.push(['TOTAL',grandUsados,grandRestantes,grandTotal].join(sep));
-
-      } else {
-        // Single partner — simple output
-        var headers = Object.keys(rows[0]);
-        csvLines.push(headers.join(sep));
-        rows.forEach(function(r) {
-          csvLines.push(headers.map(function(h) {
-            var v = String(r[h] == null ? '' : r[h]);
-            if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
-            return v;
-          }).join(sep));
-        });
-        // Add totals row
-        var totUsados = 0, totRestantes = 0, totTotal = 0;
-        rows.forEach(function(r) {
-          totUsados += (typeof r.Usados === 'number' ? r.Usados : 0);
-          totRestantes += (typeof r.Restantes === 'number' ? r.Restantes : 0);
-          totTotal += (typeof r.Total === 'number' ? r.Total : 0);
-        });
-        csvLines.push('');
+      var headers = Object.keys(rows[0]);
+      csvLines.push(headers.join(sep));
+      rows.forEach(function(r) {
         csvLines.push(headers.map(function(h) {
-          if (h === 'Tipo') return 'TOTAL';
-          if (h === 'Usados') return totUsados;
-          if (h === 'Restantes') return totRestantes;
-          if (h === 'Total') return totTotal;
-          return '';
+          var v = String(r[h] == null ? '' : r[h]);
+          if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
+          return v;
         }).join(sep));
-      }
+      });
 
       var filename = isMulti ? 'multi-reporte-signaturit.csv' : tokens[0].partner.replace(/\s+/g,'-')+'-reporte.csv';
       dlText(csvLines.join('\n'), filename, 'text/csv');
