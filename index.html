@@ -932,7 +932,14 @@ function quickExportCSV() {
   var lines = [headers.join(sep)];
   S.rawData.forEach(function(r) {
     lines.push(headers.map(function(h) {
-      var v = String(r[h] == null ? '' : r[h]);
+      var v;
+      if (h === 'Pct_Usado') {
+        // Export as decimal (0.866) so Excel % format works correctly
+        var n = parseFloat(String(r[h]));
+        v = isNaN(n) ? '0' : (n / 100).toFixed(4);
+      } else {
+        v = String(r[h] == null ? '' : r[h]);
+      }
       if (v.indexOf(sep) !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"'+v.replace(/"/g,'""')+'"';
       return v;
     }).join(sep));
