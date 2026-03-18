@@ -621,6 +621,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
   <div id="wb-toolbar" style="display:none;margin-bottom:12px">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="btn btn-secondary btn-sm" onclick="wbOpenColumnManager()">Columnas</button>
+      <button class="btn btn-secondary btn-sm" onclick="wbOpenFillDown()">Rellenar vacíos ▼</button>
       <select id="wb-group-col" style="width:180px;padding:5px 8px;font-size:12px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)" onchange="wbApplyGroupBy()">
         <option value="">— Agrupar por —</option>
       </select>
@@ -3480,6 +3481,127 @@ function wbShowAllCols() {
   if (!sh) return;
   sh.hiddenCols = {};
   sh.headers = sh.allHeaders.slice();
+}
+
+// ──── Fill Down (rellenar vacíos) ────
+function wbOpenFillDown() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  var container = document.getElementById('token-modal-container');
+
+  // Detect which columns have empty gaps (Salesforce merged-cell pattern)
+  var colStats = [];
+  sh.allHeaders.forEach(function(h) {
+    var total = sh.rows.length;
+    var empty = 0;
+    var hasGapPattern = false;
+    var lastVal = '';
+    for (var i = 0; i < total; i++) {
+      var v = String(sh.rows[i][h] || '').trim();
+      if (v === '') {
+        empty++;
+        if (lastVal !== '') hasGapPattern = true;
+      } else {
+        lastVal = v;
+      }
+    }
+    var pctEmpty = total > 0 ? Math.round(empty / total * 100) : 0;
+    colStats.push({ col: h, empty: empty, pctEmpty: pctEmpty, hasGap: hasGapPattern });
+  });
+
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:550px">' +
+    '<h3>Rellenar vacíos hacia abajo</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:8px">Cuando Salesforce exporta datos agrupados, el valor del grupo aparece solo en la primera fila. Esta herramienta copia el último valor no vacío hacia abajo.</p>' +
+    '<p style="color:#f59e0b;font-size:11px;margin-bottom:12px">Seleccioná las columnas donde querés rellenar los vacíos:</p>' +
+    '<div style="max-height:350px;overflow-y:auto">';
+
+  colStats.forEach(function(cs) {
+    var recommended = cs.hasGap && cs.pctEmpty > 10 && cs.pctEmpty < 95;
+    var badge = '';
+    if (recommended) badge = ' <span style="background:#f59e0b;color:#000;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600">Recomendado</span>';
+    else if (cs.pctEmpty === 0) badge = ' <span style="color:var(--text-dim);font-size:10px">sin vacíos</span>';
+
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">' +
+      '<label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;flex:1;min-width:0">' +
+      '<input type="checkbox" class="wb-fill-check" value="' + cs.col + '"' + (recommended ? ' checked' : '') + (cs.pctEmpty === 0 ? ' disabled' : '') + '>' +
+      '<span style="font-size:12px;font-weight:' + (recommended ? '600' : '400') + '">' + esc(cs.col) + '</span>' +
+      badge +
+      '</label>' +
+      '<span style="color:var(--text-dim);font-size:11px;white-space:nowrap">' + cs.empty + ' vacíos (' + cs.pctEmpty + '%)</span>' +
+      '</div>';
+  });
+
+  html += '</div>' +
+    '<div style="margin-top:12px;padding:10px;background:rgba(124,58,237,.08);border-radius:8px">' +
+    '<label style="font-size:12px;cursor:pointer"><input type="checkbox" id="wb-fill-preview" checked> Vista previa antes de aplicar</label>' +
+    '</div>' +
+    '<div class="btn-group" style="margin-top:12px">' +
+    '<button class="btn btn-primary" onclick="wbExecuteFillDown()">Rellenar</button>' +
+    '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button>' +
+    '</div></div></div>';
+
+  container.innerHTML = html;
+}
+
+function wbExecuteFillDown() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+
+  var checks = document.querySelectorAll('.wb-fill-check:checked');
+  var cols = [];
+  checks.forEach(function(cb) { cols.push(cb.value); });
+
+  if (!cols.length) { showToast('Seleccioná al menos una columna', 'error'); return; }
+
+  var preview = document.getElementById('wb-fill-preview').checked;
+  var totalFilled = 0;
+  var changes = []; // for preview
+
+  cols.forEach(function(col) {
+    var lastVal = '';
+    for (var i = 0; i < sh.rows.length; i++) {
+      var current = String(sh.rows[i][col] || '').trim();
+      if (current !== '') {
+        lastVal = current;
+      } else if (lastVal !== '') {
+        if (preview) {
+          changes.push({ row: i, col: col, from: '', to: lastVal });
+        }
+        sh.rows[i][col] = lastVal;
+        totalFilled++;
+      }
+    }
+  });
+
+  closeReportModal();
+
+  if (preview && changes.length > 0) {
+    // Show preview of what was filled
+    var container = document.getElementById('token-modal-container');
+    var maxShow = Math.min(changes.length, 30);
+    var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+      '<div class="portal-modal" style="max-width:550px">' +
+      '<h3>Resultado: ' + totalFilled + ' celdas rellenadas</h3>' +
+      '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Columnas: ' + esc(cols.join(', ')) + '</p>' +
+      '<div style="max-height:350px;overflow-y:auto">' +
+      '<table class="data-table" style="font-size:11px"><thead><tr><th>Fila</th><th>Columna</th><th>Valor rellenado</th></tr></thead><tbody>';
+
+    for (var i = 0; i < maxShow; i++) {
+      var c = changes[i];
+      html += '<tr><td>' + (c.row + 1) + '</td><td>' + esc(c.col) + '</td><td style="color:#22c55e;font-weight:600">' + esc(c.to) + '</td></tr>';
+    }
+    if (changes.length > maxShow) html += '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">... y ' + (changes.length - maxShow) + ' más</td></tr>';
+
+    html += '</tbody></table></div>' +
+      '<div class="btn-group" style="margin-top:12px">' +
+      '<button class="btn btn-primary btn-sm" onclick="closeReportModal()">OK</button>' +
+      '</div></div></div>';
+    container.innerHTML = html;
+  }
+
+  wbRefresh();
+  showToast(totalFilled + ' celdas rellenadas en ' + cols.length + ' columna(s)');
 }
 
 // ──── Cross-Sheet Match ────
