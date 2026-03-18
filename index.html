@@ -231,6 +231,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
     <button class="tab-btn" onclick="switchTab(3)"><span class="ico">🖼</span> <span>Dashboard</span></button>
     <button class="tab-btn" onclick="switchTab(4)"><span class="ico">💾</span> <span>Exportar</span></button>
     <button class="tab-btn" onclick="switchTab(5)"><span class="ico">🔑</span> <span>Portal</span></button>
+    <button class="tab-btn" onclick="switchTab(6)"><span class="ico">🔧</span> <span>Workbench</span></button>
   </nav>
 </aside>
 
@@ -597,6 +598,69 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
   </div>
 </div>
 
+<!-- TAB 6: WORKBENCH -->
+<div class="tab-content" id="tab-6">
+  <h2 class="section-title">Workbench</h2>
+  <p class="section-desc">Cargá reportes de Salesforce, combiná hojas, agrupá por columnas, filtrá por fecha y generá resúmenes.</p>
+
+  <!-- Upload area -->
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="document.getElementById('wb-file-input').click()">+ Cargar Excel/CSV</button>
+      <input type="file" id="wb-file-input" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="wbHandleFiles(event)">
+      <span style="color:var(--text-dim);font-size:12px">Se detectan automáticamente headers de Salesforce</span>
+    </div>
+  </div>
+
+  <!-- Sheet tabs -->
+  <div id="wb-sheet-tabs" style="display:none;margin-bottom:12px">
+    <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center" id="wb-sheet-btns"></div>
+  </div>
+
+  <!-- Toolbar -->
+  <div id="wb-toolbar" style="display:none;margin-bottom:12px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-secondary btn-sm" onclick="wbOpenColumnManager()">Columnas</button>
+      <select id="wb-group-col" style="width:180px;padding:5px 8px;font-size:12px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)" onchange="wbApplyGroupBy()">
+        <option value="">— Agrupar por —</option>
+      </select>
+      <select id="wb-subgroup-col" style="width:180px;padding:5px 8px;font-size:12px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)" onchange="wbApplyGroupBy()">
+        <option value="">— Sub-agrupar —</option>
+      </select>
+      <input type="date" id="wb-date-from" style="padding:5px 8px;font-size:12px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)" onchange="wbApplyFilters()" title="Desde">
+      <input type="date" id="wb-date-to" style="padding:5px 8px;font-size:12px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)" onchange="wbApplyFilters()" title="Hasta">
+      <button class="btn btn-secondary btn-sm" onclick="wbClearFilters()">Limpiar filtros</button>
+      <button class="btn btn-secondary btn-sm" onclick="wbOpenMatchPanel()">Cruzar hojas</button>
+      <button class="btn btn-success btn-sm" onclick="wbBuildSummary()">Reporte Resumen</button>
+      <button class="btn btn-success btn-sm" onclick="wbExportXLSX()">Exportar XLSX</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div id="wb-stats" style="display:none;margin-bottom:12px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap" id="wb-stats-chips"></div>
+  </div>
+
+  <!-- Data table -->
+  <div class="data-table-wrap" style="max-height:600px;overflow:auto" id="wb-table-wrap">
+    <table class="data-table" id="wb-table" style="font-size:12px"></table>
+  </div>
+
+  <!-- Summary output -->
+  <div id="wb-summary-output" style="display:none;margin-top:16px">
+    <h3 style="font-size:16px;font-weight:700;margin-bottom:12px">Reporte Resumen</h3>
+    <div class="data-table-wrap" style="max-height:500px;overflow:auto">
+      <table class="data-table" id="wb-summary-table" style="font-size:12px"></table>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="wb-empty" class="empty-state">
+    <div class="empty-icon">🔧</div>
+    <p>Cargá reportes de Salesforce (.xlsx, .csv) para empezar a trabajar.</p>
+  </div>
+</div>
+
 <div id="token-modal-container"></div>
 
 </main>
@@ -661,6 +725,7 @@ function switchTab(idx) {
   if (idx===3) renderDashboard();
   if (idx===4) refreshExportPanel();
   if (idx===5) renderTokenTable();
+  if (idx===6) wbRefresh();
 }
 
 function showToast(msg, type='success') {
@@ -2891,6 +2956,903 @@ function formatCreditType(type) {
   };
   return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, function(l){return l.toUpperCase()});
 }
+
+// ═══════════════════════════════════════════════════
+// WORKBENCH - Data Processing Engine
+// ═══════════════════════════════════════════════════
+var WB = {
+  sheets: [],          // [{id, name, rows, headers, allHeaders, hiddenCols, colRenames}]
+  activeSheet: 0,
+  filteredRows: [],
+  groupCol: '',
+  subgroupCol: '',
+  groupState: {},      // {groupKey: true/false (expanded)}
+  dateCol: '',         // auto-detected date column
+  dateFrom: '',
+  dateTo: '',
+  lastSummary: null
+};
+
+// ──── Smart Salesforce Excel Parser ────
+function wbDetectDataRange(rawRows) {
+  if (!rawRows || !rawRows.length) return { headers: [], data: [] };
+  var firstKeys = Object.keys(rawRows[0]);
+  var metaPatterns = /^(filtered|show:|as of |generated|account record|customer success)/i;
+  var firstVals = firstKeys.map(function(k) { return String(rawRows[0][k] || ''); });
+  var hasMetaInFirstRow = firstVals.some(function(v) { return metaPatterns.test(v.trim()); });
+  var hasEmptyHeaders = firstKeys.some(function(k) { return k.indexOf('__EMPTY') !== -1; });
+  if (!hasMetaInFirstRow && !hasEmptyHeaders) {
+    return { headers: firstKeys, data: rawRows };
+  }
+  return null;
+}
+
+function wbParseExcelSmart(arrayBuffer, fileName) {
+  var wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  var results = [];
+
+  wb.SheetNames.forEach(function(sheetName) {
+    var ws = wb.Sheets[sheetName];
+    var stdRows = XLSX.utils.sheet_to_json(ws, { raw: false, dateNF: 'yyyy-mm-dd' });
+    var detected = wbDetectDataRange(stdRows);
+
+    if (detected) {
+      results.push({
+        name: wb.SheetNames.length > 1 ? fileName + ' [' + sheetName + ']' : fileName,
+        headers: detected.headers,
+        data: detected.data
+      });
+      return;
+    }
+
+    var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
+    var headerRowIdx = -1;
+
+    for (var i = 0; i < Math.min(aoa.length, 15); i++) {
+      var row = aoa[i];
+      if (!row) continue;
+      var nonEmpty = row.filter(function(c) { return c != null && String(c).trim() !== ''; }).length;
+      var rowText = row.join(' ');
+      var isMetaRow = /filtered|show:|as of |generated by|account record type/i.test(rowText);
+      if (nonEmpty >= 3 && !isMetaRow) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) headerRowIdx = 0;
+
+    var headers = aoa[headerRowIdx].map(function(h, idx) {
+      return h != null && String(h).trim() !== '' ? String(h).trim() : 'Col_' + (idx + 1);
+    });
+    while (headers.length > 0 && headers[headers.length - 1].indexOf('Col_') === 0) {
+      var lastIdx = headers.length - 1;
+      var hasData = false;
+      for (var r = headerRowIdx + 1; r < aoa.length; r++) {
+        if (aoa[r] && aoa[r][lastIdx] != null && String(aoa[r][lastIdx]).trim() !== '') { hasData = true; break; }
+      }
+      if (!hasData) headers.pop(); else break;
+    }
+
+    var data = [];
+    for (var j = headerRowIdx + 1; j < aoa.length; j++) {
+      var r2 = aoa[j];
+      if (!r2) continue;
+      var anyVal = r2.some(function(c) { return c != null && String(c).trim() !== ''; });
+      if (!anyVal) continue;
+      var obj = {};
+      headers.forEach(function(h, ci) { obj[h] = r2[ci] != null ? String(r2[ci]).trim() : ''; });
+      data.push(obj);
+    }
+
+    results.push({
+      name: wb.SheetNames.length > 1 ? fileName + ' [' + sheetName + ']' : fileName,
+      headers: headers,
+      data: data
+    });
+  });
+
+  return results;
+}
+
+// ──── File handling ────
+function wbHandleFiles(event) {
+  var files = event.target.files;
+  if (!files.length) return;
+  for (var i = 0; i < files.length; i++) {
+    wbLoadFile(files[i]);
+  }
+  event.target.value = '';
+}
+
+function wbLoadFile(file) {
+  var ext = file.name.split('.').pop().toLowerCase();
+
+  if (ext === 'csv') {
+    file.text().then(function(txt) {
+      var sep = txt.indexOf(';') !== -1 && txt.indexOf(',') === -1 ? ';' : (txt.split(';').length > txt.split(',').length ? ';' : ',');
+      var lines = txt.trim().split('\n');
+      var startRow = 0;
+      for (var i = 0; i < Math.min(lines.length, 10); i++) {
+        if (/filtered|show:|as of |generated by/i.test(lines[i]) || lines[i].trim().split(sep).filter(function(c){return c.trim()}).length <= 1) {
+          startRow = i + 1;
+        } else break;
+      }
+      var headerLine = lines[startRow];
+      var headers = headerLine.split(sep).map(function(h) { return h.trim().replace(/^"|"$/g, ''); });
+      var data = [];
+      for (var j = startRow + 1; j < lines.length; j++) {
+        if (!lines[j].trim()) continue;
+        var vals = lines[j].split(sep).map(function(v) { return v.trim().replace(/^"|"$/g, ''); });
+        var obj = {};
+        headers.forEach(function(h, ci) { obj[h] = vals[ci] || ''; });
+        data.push(obj);
+      }
+      wbAddSheet(file.name, headers, data);
+    });
+  } else {
+    var reader = new FileReader();
+    reader.onload = function() {
+      try {
+        var results = wbParseExcelSmart(reader.result, file.name);
+        results.forEach(function(r) { wbAddSheet(r.name, r.headers, r.data); });
+      } catch(err) { showToast('Error: ' + err.message, 'error'); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function wbAddSheet(name, headers, data) {
+  var id = 'wb-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+  WB.sheets.push({
+    id: id,
+    name: name,
+    rows: data,
+    headers: headers.slice(),
+    allHeaders: headers.slice(),
+    hiddenCols: {},
+    colRenames: {}
+  });
+  WB.activeSheet = WB.sheets.length - 1;
+  showToast(name + ': ' + data.length + ' filas, ' + headers.length + ' columnas');
+  wbRefresh();
+}
+
+// ──── Refresh / Render ────
+function wbRefresh() {
+  var hasSheets = WB.sheets.length > 0;
+  document.getElementById('wb-empty').style.display = hasSheets ? 'none' : 'block';
+  document.getElementById('wb-sheet-tabs').style.display = hasSheets ? 'block' : 'none';
+  document.getElementById('wb-toolbar').style.display = hasSheets ? 'block' : 'none';
+  document.getElementById('wb-stats').style.display = hasSheets ? 'block' : 'none';
+
+  if (!hasSheets) { document.getElementById('wb-table').innerHTML = ''; return; }
+
+  wbRenderSheetTabs();
+  wbPopulateToolbar();
+  wbApplyFilters();
+}
+
+function wbRenderSheetTabs() {
+  var html = '';
+  WB.sheets.forEach(function(sh, i) {
+    var active = i === WB.activeSheet;
+    html += '<button class="btn btn-sm ' + (active ? 'btn-primary' : 'btn-secondary') + '" ' +
+      'onclick="wbSwitchSheet(' + i + ')" style="font-size:11px;position:relative;padding-right:24px">' +
+      esc(sh.name) + ' <small>(' + sh.rows.length + ')</small>' +
+      '<span onclick="event.stopPropagation();wbRemoveSheet(' + i + ')" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);cursor:pointer;opacity:.6;font-size:14px">&times;</span>' +
+      '</button>';
+  });
+  document.getElementById('wb-sheet-btns').innerHTML = html;
+}
+
+function wbSwitchSheet(idx) {
+  WB.activeSheet = idx;
+  WB.groupCol = '';
+  WB.subgroupCol = '';
+  WB.groupState = {};
+  wbRefresh();
+}
+
+function wbRemoveSheet(idx) {
+  WB.sheets.splice(idx, 1);
+  if (WB.activeSheet >= WB.sheets.length) WB.activeSheet = Math.max(0, WB.sheets.length - 1);
+  wbRefresh();
+}
+
+function wbGetSheet() { return WB.sheets[WB.activeSheet] || null; }
+
+function wbVisibleHeaders(sh) {
+  if (!sh) return [];
+  return sh.headers.filter(function(h) { return !sh.hiddenCols[h]; });
+}
+
+function wbDisplayName(sh, col) {
+  return sh.colRenames[col] || col;
+}
+
+// ──── Toolbar population ────
+function wbPopulateToolbar() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  var vis = wbVisibleHeaders(sh);
+
+  var groupSel = document.getElementById('wb-group-col');
+  var subSel = document.getElementById('wb-subgroup-col');
+  var prevGroup = WB.groupCol;
+  var prevSub = WB.subgroupCol;
+
+  groupSel.innerHTML = '<option value="">— Agrupar por —</option>' +
+    vis.map(function(h) { return '<option value="' + h + '"' + (h === prevGroup ? ' selected' : '') + '>' + esc(wbDisplayName(sh, h)) + '</option>'; }).join('');
+  subSel.innerHTML = '<option value="">— Sub-agrupar —</option>' +
+    vis.map(function(h) { return '<option value="' + h + '"' + (h === prevSub ? ' selected' : '') + '>' + esc(wbDisplayName(sh, h)) + '</option>'; }).join('');
+
+  WB.dateCol = wbDetectDateCol(sh);
+}
+
+function wbDetectDateCol(sh) {
+  var dateCols = sh.headers.filter(function(h) {
+    return /date|fecha|created|modified|last.*activity/i.test(h);
+  });
+  if (dateCols.length) return dateCols[0];
+  for (var i = 0; i < sh.headers.length; i++) {
+    var h = sh.headers[i];
+    var sample = sh.rows.slice(0, 5).map(function(r) { return String(r[h] || ''); });
+    var dateCount = sample.filter(function(v) { return /\d{2}[\/\-]\d{2}[\/\-]\d{2,4}/.test(v); }).length;
+    if (dateCount >= 3) return h;
+  }
+  return '';
+}
+
+// ──── Filters ────
+function wbApplyFilters() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  WB.dateFrom = document.getElementById('wb-date-from').value;
+  WB.dateTo = document.getElementById('wb-date-to').value;
+
+  var filtered = sh.rows;
+
+  if (WB.dateCol && (WB.dateFrom || WB.dateTo)) {
+    var fromD = WB.dateFrom ? wbParseDate(WB.dateFrom) : null;
+    var toD = WB.dateTo ? wbParseDate(WB.dateTo) : null;
+    filtered = filtered.filter(function(r) {
+      var d = wbParseDate(String(r[WB.dateCol] || ''));
+      if (!d) return true;
+      if (fromD && d < fromD) return false;
+      if (toD && d > toD) return false;
+      return true;
+    });
+  }
+
+  WB.filteredRows = filtered;
+  wbRenderStats(sh, filtered);
+  wbApplyGroupBy();
+}
+
+function wbClearFilters() {
+  document.getElementById('wb-date-from').value = '';
+  document.getElementById('wb-date-to').value = '';
+  document.getElementById('wb-group-col').value = '';
+  document.getElementById('wb-subgroup-col').value = '';
+  WB.groupCol = '';
+  WB.subgroupCol = '';
+  WB.groupState = {};
+  wbApplyFilters();
+}
+
+function wbParseDate(str) {
+  if (!str) return null;
+  str = String(str).trim();
+  var m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    var y = m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3]);
+    var a = parseInt(m[1]), b = parseInt(m[2]);
+    if (a > 12) return new Date(y, b - 1, a);
+    if (b > 12) return new Date(y, a - 1, b);
+    return new Date(y, b - 1, a);
+  }
+  m = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+  var d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function wbFormatDate(d) {
+  if (!d) return '';
+  return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear();
+}
+
+// ──── Stats ────
+function wbRenderStats(sh, rows) {
+  var vis = wbVisibleHeaders(sh);
+  document.getElementById('wb-stats-chips').innerHTML =
+    '<div class="stat-chip"><strong>' + rows.length + '</strong><span>filas</span></div>' +
+    '<div class="stat-chip"><strong>' + vis.length + '</strong><span>columnas</span></div>' +
+    '<div class="stat-chip"><strong>' + sh.allHeaders.length + '</strong><span>total cols</span></div>' +
+    (WB.dateCol ? '<div class="stat-chip"><strong>' + esc(WB.dateCol) + '</strong><span>col fecha</span></div>' : '') +
+    (WB.groupCol ? '<div class="stat-chip"><strong>' + esc(WB.groupCol) + '</strong><span>agrupado</span></div>' : '');
+}
+
+// ──── Group by ────
+function wbApplyGroupBy() {
+  WB.groupCol = document.getElementById('wb-group-col').value;
+  WB.subgroupCol = document.getElementById('wb-subgroup-col').value;
+  wbRenderTable();
+}
+
+function wbRenderTable() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  var vis = wbVisibleHeaders(sh);
+  var rows = WB.filteredRows;
+
+  var html = '<thead><tr><th class="row-num">#</th>';
+  vis.forEach(function(h) {
+    html += '<th style="cursor:pointer;white-space:nowrap" onclick="wbSortBy(\'' + h.replace(/'/g, "\\'") + '\')">' + esc(wbDisplayName(sh, h)) + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  if (WB.groupCol && vis.indexOf(WB.groupCol) !== -1) {
+    html += wbRenderGrouped(rows, vis, sh);
+  } else {
+    rows.forEach(function(r, i) {
+      if (i >= 500) return;
+      html += wbRenderRow(r, i + 1, vis, sh);
+    });
+    if (rows.length > 500) html += '<tr><td colspan="' + (vis.length + 1) + '" style="text-align:center;color:var(--text-dim)">... y ' + (rows.length - 500) + ' filas más</td></tr>';
+  }
+
+  html += '</tbody>';
+  document.getElementById('wb-table').innerHTML = html;
+}
+
+function wbRenderRow(r, num, vis, sh) {
+  var html = '<tr><td class="row-num">' + num + '</td>';
+  vis.forEach(function(h) {
+    var val = String(r[h] == null ? '' : r[h]);
+    var style = '';
+    if (/pct|%|porcentaje/i.test(h)) {
+      var pv = parseFloat(val);
+      if (pv >= 80) style = ' style="color:#ef4444;font-weight:700"';
+      else if (pv >= 60) style = ' style="color:#f59e0b;font-weight:600"';
+    }
+    html += '<td' + style + '>' + esc(val) + '</td>';
+  });
+  return html + '</tr>';
+}
+
+function wbRenderGrouped(rows, vis, sh) {
+  var groups = {};
+  var groupOrder = [];
+  rows.forEach(function(r) {
+    var key = String(r[WB.groupCol] || '(vacío)');
+    if (!groups[key]) { groups[key] = []; groupOrder.push(key); }
+    groups[key].push(r);
+  });
+
+  var html = '';
+  var rowNum = 0;
+
+  groupOrder.forEach(function(gk) {
+    var gRows = groups[gk];
+    var expanded = WB.groupState[gk] !== false;
+
+    if (WB.subgroupCol && WB.subgroupCol !== WB.groupCol) {
+      var subGroups = {};
+      var subOrder = [];
+      gRows.forEach(function(r) {
+        var sk = String(r[WB.subgroupCol] || '(vacío)');
+        if (!subGroups[sk]) { subGroups[sk] = []; subOrder.push(sk); }
+        subGroups[sk].push(r);
+      });
+
+      html += '<tr class="wb-group-row" onclick="wbToggleGroup(\'' + gk.replace(/'/g, "\\'") + '\')" style="cursor:pointer;background:rgba(124,58,237,.15)">' +
+        '<td class="row-num">' + (expanded ? '▼' : '▶') + '</td>' +
+        '<td colspan="' + vis.length + '" style="font-weight:700;font-size:13px">' +
+        esc(WB.groupCol) + ': ' + esc(gk) + ' <span style="color:var(--text-dim);font-weight:400">(' + gRows.length + ' filas, ' + subOrder.length + ' ' + esc(WB.subgroupCol) + ')</span></td></tr>';
+
+      if (expanded) {
+        subOrder.forEach(function(sk) {
+          var sRows = subGroups[sk];
+          var subKey = gk + '||' + sk;
+          var subExpanded = WB.groupState[subKey] !== false;
+
+          html += '<tr class="wb-subgroup-row" onclick="wbToggleGroup(\'' + subKey.replace(/'/g, "\\'") + '\')" style="cursor:pointer;background:rgba(124,58,237,.08);padding-left:20px">' +
+            '<td class="row-num" style="padding-left:16px">' + (subExpanded ? '▼' : '▶') + '</td>' +
+            '<td colspan="' + vis.length + '" style="font-weight:600;font-size:12px;padding-left:24px">' +
+            esc(WB.subgroupCol) + ': ' + esc(sk) + ' <span style="color:var(--text-dim);font-weight:400">(' + sRows.length + ')</span></td></tr>';
+
+          if (subExpanded) {
+            sRows.forEach(function(r) {
+              rowNum++;
+              html += wbRenderRow(r, rowNum, vis, sh);
+            });
+          }
+        });
+      }
+    } else {
+      html += '<tr class="wb-group-row" onclick="wbToggleGroup(\'' + gk.replace(/'/g, "\\'") + '\')" style="cursor:pointer;background:rgba(124,58,237,.15)">' +
+        '<td class="row-num">' + (expanded ? '▼' : '▶') + '</td>' +
+        '<td colspan="' + vis.length + '" style="font-weight:700;font-size:13px">' +
+        esc(WB.groupCol) + ': ' + esc(gk) + ' <span style="color:var(--text-dim);font-weight:400">(' + gRows.length + ' filas)</span></td></tr>';
+
+      if (expanded) {
+        gRows.forEach(function(r) {
+          rowNum++;
+          html += wbRenderRow(r, rowNum, vis, sh);
+        });
+      }
+    }
+  });
+
+  return html;
+}
+
+function wbToggleGroup(key) {
+  WB.groupState[key] = WB.groupState[key] === false ? true : false;
+  wbRenderTable();
+}
+
+// ──── Sort ────
+var wbSortCol = '';
+var wbSortAsc = true;
+function wbSortBy(col) {
+  if (wbSortCol === col) wbSortAsc = !wbSortAsc;
+  else { wbSortCol = col; wbSortAsc = true; }
+  var asc = wbSortAsc;
+  WB.filteredRows.sort(function(a, b) {
+    var va = a[col] == null ? '' : a[col];
+    var vb = b[col] == null ? '' : b[col];
+    var na = parseFloat(String(va).replace(/[^0-9.\-]/g, ''));
+    var nb = parseFloat(String(vb).replace(/[^0-9.\-]/g, ''));
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  wbRenderTable();
+}
+
+// ──── Column Manager ────
+function wbOpenColumnManager() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  var container = document.getElementById('token-modal-container');
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:550px;max-height:80vh">' +
+    '<h3>Gestionar Columnas</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Ocultá, mostrá, renombrá o eliminá columnas.</p>' +
+    '<div style="max-height:400px;overflow-y:auto">';
+
+  sh.allHeaders.forEach(function(h) {
+    var hidden = !!sh.hiddenCols[h];
+    var display = sh.colRenames[h] || h;
+    var sampleVals = sh.rows.slice(0, 3).map(function(r) { return String(r[h] || '').substring(0, 25); }).join(', ');
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">' +
+      '<label style="display:flex;align-items:center;gap:4px;margin:0;cursor:pointer;min-width:0">' +
+      '<input type="checkbox" ' + (hidden ? '' : 'checked') + ' onchange="wbToggleCol(\'' + h.replace(/'/g, "\\'") + '\',this.checked)">' +
+      '</label>' +
+      '<input type="text" value="' + esc(display) + '" style="flex:1;padding:4px 6px;font-size:12px;min-width:100px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px" ' +
+      'onchange="wbRenameCol(\'' + h.replace(/'/g, "\\'") + '\',this.value)">' +
+      '<span style="color:var(--text-dim);font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(sampleVals) + '">' + esc(sampleVals) + '</span>' +
+      '<button style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:2px" onclick="wbDeleteCol(\'' + h.replace(/'/g, "\\'") + '\')" title="Eliminar columna">&times;</button>' +
+      '</div>';
+  });
+
+  html += '</div>' +
+    '<div class="btn-group" style="margin-top:12px">' +
+    '<button class="btn btn-primary btn-sm" onclick="closeReportModal();wbRefresh()">Aplicar</button>' +
+    '<button class="btn btn-secondary btn-sm" onclick="wbShowAllCols();closeReportModal();wbRefresh()">Mostrar todas</button>' +
+    '<button class="btn btn-secondary btn-sm" onclick="closeReportModal()">Cerrar</button>' +
+    '</div></div></div>';
+
+  container.innerHTML = html;
+}
+
+function wbToggleCol(col, visible) {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  if (visible) delete sh.hiddenCols[col];
+  else sh.hiddenCols[col] = true;
+  sh.headers = sh.allHeaders.filter(function(h) { return !sh.hiddenCols[h]; });
+}
+
+function wbRenameCol(col, newName) {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  if (newName.trim() && newName.trim() !== col) sh.colRenames[col] = newName.trim();
+  else delete sh.colRenames[col];
+}
+
+function wbDeleteCol(col) {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  sh.allHeaders = sh.allHeaders.filter(function(h) { return h !== col; });
+  sh.headers = sh.headers.filter(function(h) { return h !== col; });
+  delete sh.hiddenCols[col];
+  delete sh.colRenames[col];
+  sh.rows.forEach(function(r) { delete r[col]; });
+  wbOpenColumnManager();
+}
+
+function wbShowAllCols() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  sh.hiddenCols = {};
+  sh.headers = sh.allHeaders.slice();
+}
+
+// ──── Cross-Sheet Match ────
+function wbOpenMatchPanel() {
+  if (WB.sheets.length < 2) { showToast('Necesitás al menos 2 hojas cargadas para cruzar', 'error'); return; }
+  var container = document.getElementById('token-modal-container');
+  var sh = wbGetSheet();
+
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:560px">' +
+    '<h3>Cruzar hojas</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Combiná datos de otra hoja. Ej: contar emails donde CSM Full Name = Owner Name.</p>';
+
+  html += '<div style="margin-bottom:12px"><label>Hoja activa: <strong>' + esc(sh.name) + '</strong></label></div>';
+
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600">Columna clave (hoja activa)</label>' +
+    '<select id="wb-match-key1" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    sh.allHeaders.map(function(h) {
+      var sel = /account.*name/i.test(h) ? ' selected' : '';
+      return '<option value="' + h + '"' + sel + '>' + esc(h) + '</option>';
+    }).join('') +
+    '</select></div>';
+
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600">Hoja a cruzar</label>' +
+    '<select id="wb-match-sheet" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)" onchange="wbUpdateMatchCols()">' +
+    WB.sheets.map(function(s, i) {
+      if (i === WB.activeSheet) return '';
+      return '<option value="' + i + '">' + esc(s.name) + ' (' + s.rows.length + ' filas)</option>';
+    }).join('') +
+    '</select></div>';
+
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600">Columna clave (hoja a cruzar)</label>' +
+    '<select id="wb-match-key2" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    '</select></div>';
+
+  html += '<div style="margin-bottom:12px;padding:10px;background:rgba(124,58,237,.08);border-radius:8px">' +
+    '<label style="font-size:12px;font-weight:600">Filtro: solo contar cuando estas columnas coincidan (opcional)</label>' +
+    '<p style="font-size:11px;color:var(--text-dim);margin:4px 0">Ej: solo contar emails donde "Customer Success Manager: Full Name" = "Owner Name"</p>' +
+    '<div style="display:flex;gap:8px">' +
+    '<select id="wb-match-filter-col1" style="flex:1;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    '<option value="">— Ninguno —</option></select>' +
+    '<span style="align-self:center;font-weight:700">=</span>' +
+    '<select id="wb-match-filter-col2" style="flex:1;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    '<option value="">— Ninguno —</option></select>' +
+    '</div></div>';
+
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600">Qué agregar a la hoja activa</label>' +
+    '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px">' +
+    '<label style="font-size:12px;cursor:pointer"><input type="checkbox" id="wb-match-count" checked> Cantidad de matches</label>' +
+    '<label style="font-size:12px;cursor:pointer"><input type="checkbox" id="wb-match-lastdate"> Última fecha</label>' +
+    '<label style="font-size:12px;cursor:pointer"><input type="checkbox" id="wb-match-firstdate"> Primera fecha</label>' +
+    '</div></div>';
+
+  html += '<div class="btn-group" style="margin-top:12px">' +
+    '<button class="btn btn-primary" onclick="wbExecuteMatch()">Cruzar</button>' +
+    '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button>' +
+    '</div></div></div>';
+
+  container.innerHTML = html;
+  wbUpdateMatchCols();
+}
+
+function wbUpdateMatchCols() {
+  var sheetIdx = parseInt(document.getElementById('wb-match-sheet').value);
+  var targetSh = WB.sheets[sheetIdx];
+  if (!targetSh) return;
+
+  var sel2 = document.getElementById('wb-match-key2');
+  var filt1 = document.getElementById('wb-match-filter-col1');
+  var filt2 = document.getElementById('wb-match-filter-col2');
+
+  sel2.innerHTML = targetSh.allHeaders.map(function(h) {
+    var sel = /account.*name/i.test(h) ? ' selected' : '';
+    return '<option value="' + h + '"' + sel + '>' + esc(h) + '</option>';
+  }).join('');
+  var filtOpts = '<option value="">— Ninguno —</option>' + targetSh.allHeaders.map(function(h) { return '<option value="' + h + '">' + esc(h) + '</option>'; }).join('');
+  filt1.innerHTML = filtOpts;
+  filt2.innerHTML = filtOpts;
+
+  // Auto-detect CSM / Owner Name columns
+  var csmCol = targetSh.allHeaders.find(function(h) { return /customer success|csm.*full/i.test(h); });
+  var ownerCol = targetSh.allHeaders.find(function(h) { return /owner.*name/i.test(h); });
+  if (csmCol && ownerCol) {
+    filt1.value = csmCol;
+    filt2.value = ownerCol;
+  }
+}
+
+function wbExecuteMatch() {
+  var sh = wbGetSheet();
+  var sheetIdx = parseInt(document.getElementById('wb-match-sheet').value);
+  var targetSh = WB.sheets[sheetIdx];
+  var key1 = document.getElementById('wb-match-key1').value;
+  var key2 = document.getElementById('wb-match-key2').value;
+  var filtCol1 = document.getElementById('wb-match-filter-col1').value;
+  var filtCol2 = document.getElementById('wb-match-filter-col2').value;
+  var addCount = document.getElementById('wb-match-count').checked;
+  var addLastDate = document.getElementById('wb-match-lastdate').checked;
+  var addFirstDate = document.getElementById('wb-match-firstdate').checked;
+
+  var targetDateCol = wbDetectDateCol(targetSh);
+
+  // Group target rows by key
+  var lookup = {};
+  targetSh.rows.forEach(function(r) {
+    var k = String(r[key2] || '').trim().toLowerCase();
+    if (!k) return;
+    if (filtCol1 && filtCol2) {
+      var v1 = String(r[filtCol1] || '').trim().toLowerCase();
+      var v2 = String(r[filtCol2] || '').trim().toLowerCase();
+      if (v1 !== v2) return;
+    }
+    if (!lookup[k]) lookup[k] = [];
+    lookup[k].push(r);
+  });
+
+  var countCol = 'Contactos_Match';
+  var lastDateCol = 'Último_Contacto';
+  var firstDateCol = 'Primer_Contacto';
+  var newCols = [];
+
+  if (addCount) newCols.push(countCol);
+  if (addLastDate && targetDateCol) newCols.push(lastDateCol);
+  if (addFirstDate && targetDateCol) newCols.push(firstDateCol);
+
+  var totalMatched = 0;
+  sh.rows.forEach(function(r) {
+    var k = String(r[key1] || '').trim().toLowerCase();
+    var matches = lookup[k] || [];
+
+    if (addCount) r[countCol] = matches.length;
+    if (matches.length > 0) totalMatched++;
+
+    if (targetDateCol && (addLastDate || addFirstDate)) {
+      var dates = matches.map(function(m) { return wbParseDate(String(m[targetDateCol] || '')); }).filter(function(d) { return d != null; });
+      dates.sort(function(a, b) { return a - b; });
+      if (addFirstDate) r[firstDateCol] = dates.length ? wbFormatDate(dates[0]) : '';
+      if (addLastDate) r[lastDateCol] = dates.length ? wbFormatDate(dates[dates.length - 1]) : '';
+    }
+  });
+
+  newCols.forEach(function(nc) {
+    if (sh.allHeaders.indexOf(nc) === -1) sh.allHeaders.push(nc);
+    if (sh.headers.indexOf(nc) === -1) sh.headers.push(nc);
+  });
+
+  closeReportModal();
+  wbRefresh();
+  showToast(totalMatched + ' de ' + sh.rows.length + ' filas con matches. ' + newCols.length + ' columna(s) agregada(s).');
+}
+
+// ──── Summary Report Builder ────
+function wbBuildSummary() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+
+  var container = document.getElementById('token-modal-container');
+  var vis = wbVisibleHeaders(sh);
+
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:560px">' +
+    '<h3>Reporte Resumen</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Agrupá y contá. Ej: por CSM, contar Parent Accounts, cuántas contactadas y %.</p>';
+
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600">Agrupar por (fila del resumen)</label>' +
+    '<select id="wb-sum-groupby" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    vis.map(function(h) {
+      var sel = /customer success|csm|owner/i.test(h) ? ' selected' : '';
+      return '<option value="' + h + '"' + sel + '>' + esc(wbDisplayName(sh, h)) + '</option>';
+    }).join('') +
+    '</select></div>';
+
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600">Contar únicos de</label>' +
+    '<select id="wb-sum-countcol" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    vis.map(function(h) {
+      var sel = /account.*name|parent/i.test(h) ? ' selected' : '';
+      return '<option value="' + h + '"' + sel + '>' + esc(wbDisplayName(sh, h)) + '</option>';
+    }).join('') +
+    '</select></div>';
+
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600">Columna de "contactados" (numérica, >= umbral = contactado)</label>' +
+    '<select id="wb-sum-contactcol" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    '<option value="">— Ninguna —</option>' +
+    vis.map(function(h) {
+      var sel = /match|contact|email|count/i.test(h) ? ' selected' : '';
+      return '<option value="' + h + '"' + sel + '>' + esc(wbDisplayName(sh, h)) + '</option>';
+    }).join('') +
+    '</select>' +
+    '<div style="display:flex;gap:8px;margin-top:6px;align-items:center">' +
+    '<label style="font-size:11px;margin:0">Umbral mínimo:</label>' +
+    '<input type="number" id="wb-sum-threshold" value="1" min="0" style="width:60px;padding:4px;border-radius:4px;background:var(--surface2);color:var(--text);border:1px solid var(--border);font-size:12px">' +
+    '</div></div>';
+
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600">Sumar columna (opcional, ej: Active MRR)</label>' +
+    '<select id="wb-sum-sumcol" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    '<option value="">— Ninguna —</option>' +
+    vis.map(function(h) {
+      var sel = /mrr|revenue|amount|monto/i.test(h) ? ' selected' : '';
+      return '<option value="' + h + '"' + sel + '>' + esc(wbDisplayName(sh, h)) + '</option>';
+    }).join('') +
+    '</select></div>';
+
+  html += '<div class="btn-group" style="margin-top:12px">' +
+    '<button class="btn btn-primary" onclick="wbGenerateSummary()">Generar</button>' +
+    '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button>' +
+    '</div></div></div>';
+
+  container.innerHTML = html;
+}
+
+function wbGenerateSummary() {
+  var sh = wbGetSheet();
+  var groupBy = document.getElementById('wb-sum-groupby').value;
+  var countCol = document.getElementById('wb-sum-countcol').value;
+  var contactCol = document.getElementById('wb-sum-contactcol').value;
+  var threshold = parseInt(document.getElementById('wb-sum-threshold').value) || 1;
+  var sumCol = document.getElementById('wb-sum-sumcol').value;
+  var rows = WB.filteredRows;
+
+  closeReportModal();
+
+  var groups = {};
+  var groupOrder = [];
+  rows.forEach(function(r) {
+    var gk = String(r[groupBy] || '(vacío)').trim();
+    if (!groups[gk]) { groups[gk] = []; groupOrder.push(gk); }
+    groups[gk].push(r);
+  });
+
+  var summaryRows = [];
+  var totals = { total: 0, contacted: 0, sumVal: 0 };
+
+  groupOrder.forEach(function(gk) {
+    var gRows = groups[gk];
+    var uniques = {};
+    var contactedUniques = {};
+    var sumVal = 0;
+    gRows.forEach(function(r) {
+      var val = String(r[countCol] || '').trim();
+      if (val) uniques[val] = true;
+
+      if (contactCol && val) {
+        var cv = parseFloat(String(r[contactCol] || '0').replace(/[^0-9.\-]/g, ''));
+        if (cv >= threshold) contactedUniques[val] = true;
+      }
+
+      if (sumCol) {
+        var sv = String(r[sumCol] || '').replace(/[^0-9.\-]/g, '');
+        sumVal += parseFloat(sv) || 0;
+      }
+    });
+
+    var uniqueCount = Object.keys(uniques).length;
+    var contactedCount = Object.keys(contactedUniques).length;
+    var pct = uniqueCount > 0 ? Math.round(contactedCount / uniqueCount * 1000) / 10 : 0;
+
+    var row = {};
+    row[wbDisplayName(sh, groupBy)] = gk;
+    row['Total ' + wbDisplayName(sh, countCol)] = uniqueCount;
+    if (contactCol) {
+      row['Contactadas (>=' + threshold + ')'] = contactedCount;
+      row['Sin contactar'] = uniqueCount - contactedCount;
+      row['% Contactadas'] = pct + '%';
+    }
+    if (sumCol) {
+      row['Suma ' + wbDisplayName(sh, sumCol)] = Math.round(sumVal * 100) / 100;
+    }
+    row['Filas'] = gRows.length;
+    summaryRows.push(row);
+
+    totals.total += uniqueCount;
+    totals.contacted += contactedCount;
+    totals.sumVal += sumVal;
+  });
+
+  // Totals row
+  var totalRow = {};
+  totalRow[wbDisplayName(sh, groupBy)] = 'TOTAL';
+  totalRow['Total ' + wbDisplayName(sh, countCol)] = totals.total;
+  if (contactCol) {
+    totalRow['Contactadas (>=' + threshold + ')'] = totals.contacted;
+    totalRow['Sin contactar'] = totals.total - totals.contacted;
+    totalRow['% Contactadas'] = totals.total > 0 ? (Math.round(totals.contacted / totals.total * 1000) / 10) + '%' : '0%';
+  }
+  if (sumCol) {
+    totalRow['Suma ' + wbDisplayName(sh, sumCol)] = Math.round(totals.sumVal * 100) / 100;
+  }
+  totalRow['Filas'] = rows.length;
+  summaryRows.push(totalRow);
+
+  // Render
+  var sumHeaders = Object.keys(summaryRows[0]);
+  var html = '<thead><tr>';
+  sumHeaders.forEach(function(h) { html += '<th>' + esc(h) + '</th>'; });
+  html += '</tr></thead><tbody>';
+  summaryRows.forEach(function(r, i) {
+    var isTotal = i === summaryRows.length - 1;
+    var style = isTotal ? ' style="font-weight:700;background:rgba(124,58,237,.15)"' : '';
+
+    var pctVal = contactCol ? parseFloat(r['% Contactadas']) : 100;
+    if (!isTotal && contactCol && pctVal < 50) style = ' style="background:rgba(239,68,68,.1)"';
+
+    html += '<tr' + style + '>';
+    sumHeaders.forEach(function(h) {
+      var val = r[h] == null ? '' : r[h];
+      var cellStyle = '';
+      if (h === '% Contactadas') {
+        var pv2 = parseFloat(val);
+        if (pv2 >= 80) cellStyle = ' style="color:#22c55e;font-weight:700"';
+        else if (pv2 >= 50) cellStyle = ' style="color:#f59e0b;font-weight:600"';
+        else cellStyle = ' style="color:#ef4444;font-weight:700"';
+      }
+      html += '<td' + cellStyle + '>' + esc(String(val)) + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+
+  document.getElementById('wb-summary-table').innerHTML = html;
+  document.getElementById('wb-summary-output').style.display = 'block';
+  WB.lastSummary = summaryRows;
+  showToast('Resumen: ' + groupOrder.length + ' grupos');
+}
+
+// ──── XLSX Export ────
+function wbExportXLSX() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  if (typeof XLSX === 'undefined') { showToast('XLSX no disponible', 'error'); return; }
+
+  var wbook = XLSX.utils.book_new();
+  var vis = wbVisibleHeaders(sh);
+
+  var wsData = [vis.map(function(h) { return wbDisplayName(sh, h); })];
+  WB.filteredRows.forEach(function(r) {
+    wsData.push(vis.map(function(h) { return r[h] == null ? '' : r[h]; }));
+  });
+  var ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = vis.map(function(h) {
+    var maxLen = Math.max(wbDisplayName(sh, h).length, 10);
+    WB.filteredRows.slice(0, 20).forEach(function(r) {
+      var l = String(r[h] || '').length;
+      if (l > maxLen) maxLen = l;
+    });
+    return { wch: Math.min(maxLen + 2, 40) };
+  });
+
+  vis.forEach(function(h, ci) {
+    var ref = XLSX.utils.encode_cell({ r: 0, c: ci });
+    if (ws[ref]) ws[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4A1D96' } } };
+  });
+
+  XLSX.utils.book_append_sheet(wbook, ws, 'Datos');
+
+  if (WB.lastSummary && WB.lastSummary.length) {
+    var sumHeaders = Object.keys(WB.lastSummary[0]);
+    var sumData = [sumHeaders];
+    WB.lastSummary.forEach(function(r) {
+      sumData.push(sumHeaders.map(function(h) { return r[h] == null ? '' : r[h]; }));
+    });
+    var ws2 = XLSX.utils.aoa_to_sheet(sumData);
+    ws2['!cols'] = sumHeaders.map(function() { return { wch: 22 }; });
+    sumHeaders.forEach(function(h, ci) {
+      var ref = XLSX.utils.encode_cell({ r: 0, c: ci });
+      if (ws2[ref]) ws2[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4A1D96' } } };
+    });
+    XLSX.utils.book_append_sheet(wbook, ws2, 'Resumen');
+  }
+
+  XLSX.writeFile(wbook, 'workbench-' + sh.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30) + '.xlsx');
+  showToast('XLSX exportado: ' + WB.filteredRows.length + ' filas');
+}
+
 </script>
 </body>
 </html>
