@@ -3537,6 +3537,25 @@ function wbOpenFillDown() {
   });
 
   html += '</div>' +
+    '<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">' +
+    '<h4 style="font-size:14px;font-weight:700;margin-bottom:8px">Mapeo por lookup</h4>' +
+    '<p style="color:var(--text-dim);font-size:11px;margin-bottom:8px">Rellenar una columna vacía buscando el valor en otra columna. Ej: si Account Name = "Metro De Madrid SA" siempre tiene Parent Account = "Metro De Madrid", se copia a las filas vacías.</p>' +
+    '<div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">' +
+    '<div style="flex:1;min-width:120px"><label style="font-size:11px;font-weight:600;margin-bottom:4px;display:block">Columna a rellenar</label>' +
+    '<select id="wb-map-target" style="width:100%;padding:5px 8px;font-size:12px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    colStats.filter(function(cs) { return cs.pctEmpty > 0; }).map(function(cs) {
+      return '<option value="' + cs.col + '">' + esc(cs.col) + ' (' + cs.pctEmpty + '% vacío)</option>';
+    }).join('') +
+    '</select></div>' +
+    '<div style="flex:1;min-width:120px"><label style="font-size:11px;font-weight:600;margin-bottom:4px;display:block">Buscar match en</label>' +
+    '<select id="wb-map-source" style="width:100%;padding:5px 8px;font-size:12px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    sh.allHeaders.map(function(h) {
+      var sel = /account.*name/i.test(h) ? ' selected' : '';
+      return '<option value="' + h + '"' + sel + '>' + esc(h) + '</option>';
+    }).join('') +
+    '</select></div>' +
+    '<button class="btn btn-primary btn-sm" onclick="wbExecuteMapLookup()" style="white-space:nowrap">Mapear</button>' +
+    '</div></div>' +
     '<div style="margin-top:12px;padding:10px;background:rgba(124,58,237,.08);border-radius:8px">' +
     '<label style="font-size:12px;cursor:pointer"><input type="checkbox" id="wb-fill-preview" checked> Vista previa antes de aplicar</label>' +
     '</div>' +
@@ -3606,6 +3625,100 @@ function wbExecuteFillDown() {
 
   wbRefresh();
   showToast(totalFilled + ' celdas rellenadas en ' + cols.length + ' columna(s)');
+}
+
+function wbExecuteMapLookup() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+
+  var targetCol = document.getElementById('wb-map-target').value;
+  var sourceCol = document.getElementById('wb-map-source').value;
+
+  if (!targetCol || !sourceCol) { showToast('Seleccioná ambas columnas', 'error'); return; }
+  if (targetCol === sourceCol) { showToast('Las columnas deben ser diferentes', 'error'); return; }
+
+  // Build lookup: for each sourceCol value, what is the targetCol value?
+  var lookup = {};
+  sh.rows.forEach(function(r) {
+    var src = String(r[sourceCol] || '').trim();
+    var tgt = String(r[targetCol] || '').trim();
+    if (src && tgt) {
+      lookup[src.toLowerCase()] = tgt;
+    }
+  });
+
+  var mapCount = Object.keys(lookup).length;
+  if (mapCount === 0) {
+    showToast('No se encontraron pares ' + sourceCol + ' → ' + targetCol + ' con ambos valores', 'error');
+    return;
+  }
+
+  // Apply lookup to empty target cells
+  var filled = 0;
+  var changes = [];
+  sh.rows.forEach(function(r, i) {
+    var tgt = String(r[targetCol] || '').trim();
+    if (tgt !== '') return; // already has value
+
+    var src = String(r[sourceCol] || '').trim();
+    if (!src) return;
+
+    var mapped = lookup[src.toLowerCase()];
+    if (mapped) {
+      r[targetCol] = mapped;
+      filled++;
+      changes.push({ row: i, source: src, value: mapped });
+    }
+  });
+
+  closeReportModal();
+
+  // Show results
+  var container = document.getElementById('token-modal-container');
+  var maxShow = Math.min(changes.length, 30);
+  var unmapped = sh.rows.filter(function(r) { return String(r[targetCol] || '').trim() === '' && String(r[sourceCol] || '').trim() !== ''; }).length;
+
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:600px">' +
+    '<h3>Mapeo: ' + filled + ' celdas rellenadas</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:4px">' + esc(sourceCol) + ' → ' + esc(targetCol) + '</p>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">' + mapCount + ' mappings encontrados en datos existentes' +
+    (unmapped > 0 ? ' | <span style="color:#f59e0b">' + unmapped + ' filas sin match</span>' : ' | Todas las filas mapeadas') + '</p>';
+
+  if (changes.length > 0) {
+    html += '<div style="max-height:300px;overflow-y:auto">' +
+      '<table class="data-table" style="font-size:11px"><thead><tr><th>Fila</th><th>' + esc(sourceCol) + '</th><th>' + esc(targetCol) + ' (nuevo)</th></tr></thead><tbody>';
+    for (var i = 0; i < maxShow; i++) {
+      html += '<tr><td>' + (changes[i].row + 1) + '</td><td>' + esc(changes[i].source) + '</td><td style="color:#22c55e;font-weight:600">' + esc(changes[i].value) + '</td></tr>';
+    }
+    if (changes.length > maxShow) html += '<tr><td colspan="3" style="text-align:center;color:var(--text-dim)">... y ' + (changes.length - maxShow) + ' más</td></tr>';
+    html += '</tbody></table></div>';
+  }
+
+  // Show unmapped source values
+  if (unmapped > 0) {
+    var unmappedVals = {};
+    sh.rows.forEach(function(r) {
+      if (String(r[targetCol] || '').trim() === '' && String(r[sourceCol] || '').trim() !== '') {
+        var sv = String(r[sourceCol]).trim();
+        unmappedVals[sv] = (unmappedVals[sv] || 0) + 1;
+      }
+    });
+    var unmappedList = Object.keys(unmappedVals).sort();
+    html += '<div style="margin-top:12px;padding:10px;background:rgba(245,158,11,.1);border-radius:8px">' +
+      '<p style="font-size:12px;font-weight:600;color:#f59e0b;margin-bottom:4px">Sin match (' + unmappedList.length + ' valores):</p>' +
+      '<div style="max-height:100px;overflow-y:auto;font-size:11px;color:var(--text-dim)">' +
+      unmappedList.map(function(v) { return esc(v) + ' <small>(' + unmappedVals[v] + ')</small>'; }).join(', ') +
+      '</div></div>';
+  }
+
+  html += '<div class="btn-group" style="margin-top:12px">' +
+    '<button class="btn btn-primary btn-sm" onclick="closeReportModal()">OK</button>' +
+    '</div></div></div>';
+  container.innerHTML = html;
+
+  wbRefresh();
+  showToast(filled + ' celdas mapeadas de ' + sourceCol + ' → ' + targetCol);
 }
 
 // ──── Cross-Sheet Match ────
