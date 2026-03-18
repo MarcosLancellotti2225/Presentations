@@ -649,7 +649,11 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
 
   <!-- Summary output -->
   <div id="wb-summary-output" style="display:none;margin-top:16px">
-    <h3 style="font-size:16px;font-weight:700;margin-bottom:12px">Reporte Resumen</h3>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+      <h3 style="font-size:16px;font-weight:700;margin:0">Reporte Resumen</h3>
+      <button class="btn btn-primary btn-sm" onclick="wbSendToChartCreator()">Crear Gráfico</button>
+      <button class="btn btn-success btn-sm" onclick="wbExportSummaryXLSX()">Exportar Resumen XLSX</button>
+    </div>
     <div class="data-table-wrap" style="max-height:500px;overflow:auto">
       <table class="data-table" id="wb-summary-table" style="font-size:12px"></table>
     </div>
@@ -3973,6 +3977,85 @@ function wbExportXLSX() {
 
   XLSX.writeFile(wbook, 'workbench-' + sh.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30) + '.xlsx');
   showToast('XLSX exportado: ' + WB.filteredRows.length + ' filas');
+}
+
+// ──── Send Summary to Chart Creator ────
+function wbSendToChartCreator() {
+  if (!WB.lastSummary || WB.lastSummary.length < 2) {
+    showToast('Generá un resumen primero', 'error'); return;
+  }
+
+  // Remove TOTAL row for charting
+  var chartData = WB.lastSummary.filter(function(r) {
+    var vals = Object.values(r);
+    return vals[0] !== 'TOTAL';
+  });
+
+  // Load into main data state
+  loadData(chartData, 'Resumen Workbench');
+
+  // Switch to chart config tab
+  switchTab(1);
+  showToast('Datos del resumen cargados. Configurá el gráfico.');
+}
+
+// ──── Export Summary only as XLSX ────
+function wbExportSummaryXLSX() {
+  if (!WB.lastSummary || !WB.lastSummary.length) { showToast('No hay resumen', 'error'); return; }
+  if (typeof XLSX === 'undefined') { showToast('XLSX no disponible', 'error'); return; }
+
+  var wbook = XLSX.utils.book_new();
+  var sumHeaders = Object.keys(WB.lastSummary[0]);
+  var sumData = [sumHeaders];
+  WB.lastSummary.forEach(function(r, i) {
+    sumData.push(sumHeaders.map(function(h) {
+      var v = r[h];
+      // Convert % strings to decimal for Excel
+      if (typeof v === 'string' && v.indexOf('%') !== -1) {
+        var n = parseFloat(v);
+        if (!isNaN(n)) return n / 100;
+      }
+      return v == null ? '' : v;
+    }));
+  });
+
+  var ws = XLSX.utils.aoa_to_sheet(sumData);
+  ws['!cols'] = sumHeaders.map(function(h) { return { wch: Math.max(h.length + 2, 18) }; });
+
+  // Header styling
+  sumHeaders.forEach(function(h, ci) {
+    var ref = XLSX.utils.encode_cell({ r: 0, c: ci });
+    if (ws[ref]) ws[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4A1D96' } } };
+  });
+
+  // Format % column and color
+  var pctColIdx = sumHeaders.indexOf('% Contactadas');
+  if (pctColIdx !== -1) {
+    for (var row = 1; row <= WB.lastSummary.length; row++) {
+      var ref = XLSX.utils.encode_cell({ r: row, c: pctColIdx });
+      if (ws[ref]) {
+        ws[ref].z = '0.0%';
+        var pv = typeof ws[ref].v === 'number' ? ws[ref].v * 100 : parseFloat(ws[ref].v);
+        if (pv < 50) ws[ref].s = { font: { color: { rgb: 'FF0000' }, bold: true }, fill: { fgColor: { rgb: 'FFCCCC' } } };
+        else if (pv < 80) ws[ref].s = { font: { color: { rgb: 'CC7700' }, bold: true }, fill: { fgColor: { rgb: 'FFF3CD' } } };
+        else ws[ref].s = { font: { color: { rgb: '006600' }, bold: true }, fill: { fgColor: { rgb: 'D4EDDA' } } };
+      }
+    }
+  }
+
+  // TOTAL row bold
+  var lastRow = WB.lastSummary.length;
+  sumHeaders.forEach(function(h, ci) {
+    var ref = XLSX.utils.encode_cell({ r: lastRow, c: ci });
+    if (ws[ref]) {
+      var existing = ws[ref].s || {};
+      ws[ref].s = Object.assign({}, existing, { font: Object.assign({}, existing.font || {}, { bold: true }), fill: { fgColor: { rgb: 'E8E0F0' } } });
+    }
+  });
+
+  XLSX.utils.book_append_sheet(wbook, ws, 'Resumen CSM');
+  XLSX.writeFile(wbook, 'resumen-csm.xlsx');
+  showToast('Resumen exportado a XLSX');
 }
 
 </script>
