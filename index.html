@@ -638,7 +638,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
       <button class="btn btn-secondary btn-sm" onclick="wbClearFilters()">Limpiar filtros</button>
       <button class="btn btn-secondary btn-sm" onclick="wbOpenMatchPanel()">Cruzar hojas</button>
       <button class="btn btn-success btn-sm" onclick="wbBuildSummary()">Reporte Resumen</button>
-      <button class="btn btn-success btn-sm" onclick="wbExportXLSX()">Exportar XLSX</button>
+      <button class="btn btn-success btn-sm" onclick="wbOpenExportModal()">Exportar</button>
       <button class="btn btn-primary btn-sm" onclick="wbSendDataToCharts()">Graficar datos</button>
     </div>
   </div>
@@ -658,7 +658,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
       <h3 style="font-size:16px;font-weight:700;margin:0">Reporte Resumen</h3>
       <button class="btn btn-primary btn-sm" onclick="wbSendToChartCreator()">Crear Gráfico</button>
-      <button class="btn btn-success btn-sm" onclick="wbExportSummaryXLSX()">Exportar Resumen XLSX</button>
+      <button class="btn btn-success btn-sm" onclick="wbOpenExportModal()">Exportar</button>
     </div>
     <div class="data-table-wrap" style="max-height:500px;overflow:auto">
       <table class="data-table" id="wb-summary-table" style="font-size:12px"></table>
@@ -4134,71 +4134,235 @@ function wbGenerateSummary() {
   showToast('Resumen: ' + groupOrder.length + ' grupos');
 }
 
-// ──── XLSX Export ────
-function wbExportXLSX() {
+// ──── Unified Export Modal ────
+function wbOpenExportModal() {
   var sh = wbGetSheet();
-  if (!sh) return;
-  if (typeof XLSX === 'undefined') { showToast('XLSX no disponible', 'error'); return; }
+  if (!sh) { showToast('No hay datos', 'error'); return; }
 
-  var wbook = XLSX.utils.book_new();
+  var hasSummary = WB.lastSummary && WB.lastSummary.length > 0;
+  var container = document.getElementById('token-modal-container');
+
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:500px">' +
+    '<h3>Exportar datos</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:16px">' + WB.filteredRows.length + ' filas filtradas' +
+    (hasSummary ? ' + resumen (' + (WB.lastSummary.length) + ' filas)' : '') + '</p>';
+
+  // What to export
+  html += '<div style="margin-bottom:16px"><label style="font-size:12px;font-weight:600;margin-bottom:6px;display:block">Qué exportar</label>' +
+    '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+    '<label style="font-size:12px;cursor:pointer"><input type="radio" name="wb-exp-what" value="data" checked> Datos filtrados (' + WB.filteredRows.length + ')</label>';
+  if (hasSummary) {
+    html += '<label style="font-size:12px;cursor:pointer"><input type="radio" name="wb-exp-what" value="summary"> Solo resumen</label>' +
+      '<label style="font-size:12px;cursor:pointer"><input type="radio" name="wb-exp-what" value="both"> Datos + Resumen</label>';
+  }
+  html += '</div></div>';
+
+  // Format buttons as cards
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+
+  html += '<div onclick="wbDoExport(\'xlsx\')" class="card" style="cursor:pointer;padding:16px;text-align:center;border:2px solid var(--border);transition:border-color .2s" onmouseenter="this.style.borderColor=\'var(--accent)\'" onmouseleave="this.style.borderColor=\'var(--border)\'">' +
+    '<div style="font-size:24px;margin-bottom:4px">📊</div>' +
+    '<div style="font-weight:700;font-size:13px">XLSX</div>' +
+    '<div style="color:var(--text-dim);font-size:10px">Excel con formato, colores y hojas</div></div>';
+
+  html += '<div onclick="wbDoExport(\'csv\')" class="card" style="cursor:pointer;padding:16px;text-align:center;border:2px solid var(--border);transition:border-color .2s" onmouseenter="this.style.borderColor=\'var(--accent)\'" onmouseleave="this.style.borderColor=\'var(--border)\'">' +
+    '<div style="font-size:24px;margin-bottom:4px">📄</div>' +
+    '<div style="font-weight:700;font-size:13px">CSV</div>' +
+    '<div style="color:var(--text-dim);font-size:10px">Separado por comas, universal</div></div>';
+
+  html += '<div onclick="wbDoExport(\'json\')" class="card" style="cursor:pointer;padding:16px;text-align:center;border:2px solid var(--border);transition:border-color .2s" onmouseenter="this.style.borderColor=\'var(--accent)\'" onmouseleave="this.style.borderColor=\'var(--border)\'">' +
+    '<div style="font-size:24px;margin-bottom:4px">{ }</div>' +
+    '<div style="font-weight:700;font-size:13px">JSON</div>' +
+    '<div style="color:var(--text-dim);font-size:10px">Datos estructurados</div></div>';
+
+  html += '<div onclick="wbDoExport(\'clipboard\')" class="card" style="cursor:pointer;padding:16px;text-align:center;border:2px solid var(--border);transition:border-color .2s" onmouseenter="this.style.borderColor=\'var(--accent)\'" onmouseleave="this.style.borderColor=\'var(--border)\'">' +
+    '<div style="font-size:24px;margin-bottom:4px">📋</div>' +
+    '<div style="font-weight:700;font-size:13px">Copiar</div>' +
+    '<div style="color:var(--text-dim);font-size:10px">TSV al portapapeles (pegar en Excel)</div></div>';
+
+  html += '</div>';
+
+  html += '<div class="btn-group" style="margin-top:16px;justify-content:center">' +
+    '<button class="btn btn-secondary btn-sm" onclick="closeReportModal()">Cerrar</button>' +
+    '</div></div></div>';
+
+  container.innerHTML = html;
+}
+
+function wbGetExportData() {
+  var what = document.querySelector('input[name="wb-exp-what"]:checked');
+  var mode = what ? what.value : 'data';
+  var sh = wbGetSheet();
   var vis = wbVisibleHeaders(sh);
 
-  var wsData = [vis.map(function(h) { return wbDisplayName(sh, h); })];
-  WB.filteredRows.forEach(function(r) {
-    wsData.push(vis.map(function(h) { return r[h] == null ? '' : r[h]; }));
-  });
-  var ws = XLSX.utils.aoa_to_sheet(wsData);
-  ws['!cols'] = vis.map(function(h) {
-    var maxLen = Math.max(wbDisplayName(sh, h).length, 10);
-    WB.filteredRows.slice(0, 20).forEach(function(r) {
-      var l = String(r[h] || '').length;
-      if (l > maxLen) maxLen = l;
+  var result = { data: null, summary: null, dataHeaders: [], sumHeaders: [] };
+
+  if (mode === 'data' || mode === 'both') {
+    result.dataHeaders = vis.map(function(h) { return wbDisplayName(sh, h); });
+    result.data = WB.filteredRows.map(function(r) {
+      var row = {};
+      vis.forEach(function(h) { row[wbDisplayName(sh, h)] = r[h] == null ? '' : r[h]; });
+      return row;
     });
-    return { wch: Math.min(maxLen + 2, 40) };
-  });
+  }
+  if ((mode === 'summary' || mode === 'both') && WB.lastSummary) {
+    result.sumHeaders = Object.keys(WB.lastSummary[0]);
+    result.summary = WB.lastSummary;
+  }
+  return result;
+}
 
-  vis.forEach(function(h, ci) {
-    var ref = XLSX.utils.encode_cell({ r: 0, c: ci });
-    if (ws[ref]) ws[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4A1D96' } } };
-  });
+function wbDoExport(format) {
+  var exp = wbGetExportData();
+  var sh = wbGetSheet();
+  var baseName = 'report-' + (sh ? sh.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 25) : 'data');
 
-  XLSX.utils.book_append_sheet(wbook, ws, 'Datos');
+  if (format === 'xlsx') {
+    wbExportAsXLSX(exp, baseName);
+  } else if (format === 'csv') {
+    wbExportAsCSV(exp, baseName);
+  } else if (format === 'json') {
+    wbExportAsJSON(exp, baseName);
+  } else if (format === 'clipboard') {
+    wbExportToClipboard(exp);
+  }
+  closeReportModal();
+}
 
-  if (WB.lastSummary && WB.lastSummary.length) {
-    var sumHeaders = Object.keys(WB.lastSummary[0]);
-    var sumData = [sumHeaders];
-    WB.lastSummary.forEach(function(r) {
-      sumData.push(sumHeaders.map(function(h) { return r[h] == null ? '' : r[h]; }));
+function wbExportAsXLSX(exp, baseName) {
+  if (typeof XLSX === 'undefined') { showToast('XLSX no disponible', 'error'); return; }
+  var wbook = XLSX.utils.book_new();
+
+  if (exp.data) {
+    var wsData = [exp.dataHeaders];
+    exp.data.forEach(function(r) {
+      wsData.push(exp.dataHeaders.map(function(h) { return r[h] == null ? '' : r[h]; }));
+    });
+    var ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = exp.dataHeaders.map(function(h) {
+      var maxLen = Math.max(h.length, 10);
+      exp.data.slice(0, 20).forEach(function(r) { var l = String(r[h] || '').length; if (l > maxLen) maxLen = l; });
+      return { wch: Math.min(maxLen + 2, 40) };
+    });
+    exp.dataHeaders.forEach(function(h, ci) {
+      var ref = XLSX.utils.encode_cell({ r: 0, c: ci });
+      if (ws[ref]) ws[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4A1D96' } } };
+    });
+    XLSX.utils.book_append_sheet(wbook, ws, 'Datos');
+  }
+
+  if (exp.summary) {
+    var sumData = [exp.sumHeaders];
+    exp.summary.forEach(function(r) {
+      sumData.push(exp.sumHeaders.map(function(h) {
+        var v = r[h];
+        if (typeof v === 'string' && v.indexOf('%') !== -1) { var n = parseFloat(v); if (!isNaN(n)) return n / 100; }
+        return v == null ? '' : v;
+      }));
     });
     var ws2 = XLSX.utils.aoa_to_sheet(sumData);
-    ws2['!cols'] = sumHeaders.map(function() { return { wch: 22 }; });
-    sumHeaders.forEach(function(h, ci) {
+    ws2['!cols'] = exp.sumHeaders.map(function(h) { return { wch: Math.max(h.length + 2, 18) }; });
+    exp.sumHeaders.forEach(function(h, ci) {
       var ref = XLSX.utils.encode_cell({ r: 0, c: ci });
       if (ws2[ref]) ws2[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4A1D96' } } };
+    });
+    // % column coloring
+    var pctIdx = exp.sumHeaders.indexOf('% Contactadas');
+    if (pctIdx !== -1) {
+      for (var row = 1; row <= exp.summary.length; row++) {
+        var ref = XLSX.utils.encode_cell({ r: row, c: pctIdx });
+        if (ws2[ref]) {
+          ws2[ref].z = '0.0%';
+          var pv = typeof ws2[ref].v === 'number' ? ws2[ref].v * 100 : parseFloat(ws2[ref].v);
+          if (pv < 50) ws2[ref].s = { font: { color: { rgb: 'FF0000' }, bold: true }, fill: { fgColor: { rgb: 'FFCCCC' } } };
+          else if (pv < 80) ws2[ref].s = { font: { color: { rgb: 'CC7700' }, bold: true }, fill: { fgColor: { rgb: 'FFF3CD' } } };
+          else ws2[ref].s = { font: { color: { rgb: '006600' }, bold: true }, fill: { fgColor: { rgb: 'D4EDDA' } } };
+        }
+      }
+    }
+    // TOTAL row
+    var lastR = exp.summary.length;
+    exp.sumHeaders.forEach(function(h, ci) {
+      var ref = XLSX.utils.encode_cell({ r: lastR, c: ci });
+      if (ws2[ref]) {
+        var ex = ws2[ref].s || {};
+        ws2[ref].s = Object.assign({}, ex, { font: Object.assign({}, ex.font || {}, { bold: true }), fill: { fgColor: { rgb: 'E8E0F0' } } });
+      }
     });
     XLSX.utils.book_append_sheet(wbook, ws2, 'Resumen');
   }
 
-  XLSX.writeFile(wbook, 'workbench-' + sh.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30) + '.xlsx');
-  showToast('XLSX exportado: ' + WB.filteredRows.length + ' filas');
+  XLSX.writeFile(wbook, baseName + '.xlsx');
+  var count = (exp.data ? exp.data.length : 0) + (exp.summary ? exp.summary.length : 0);
+  showToast('XLSX exportado: ' + count + ' filas');
 }
 
-// ──── Send Summary to Chart Creator ────
+function wbExportAsCSV(exp, baseName) {
+  var sections = [];
+  if (exp.data) {
+    var lines = [exp.dataHeaders.join(',')];
+    exp.data.forEach(function(r) {
+      lines.push(exp.dataHeaders.map(function(h) {
+        var v = String(r[h] == null ? '' : r[h]);
+        if (v.indexOf(',') !== -1 || v.indexOf('"') !== -1 || v.indexOf('\n') !== -1) v = '"' + v.replace(/"/g, '""') + '"';
+        return v;
+      }).join(','));
+    });
+    sections.push(lines.join('\n'));
+  }
+  if (exp.summary) {
+    if (sections.length) sections.push('\n--- RESUMEN ---');
+    var sLines = [exp.sumHeaders.join(',')];
+    exp.summary.forEach(function(r) {
+      sLines.push(exp.sumHeaders.map(function(h) {
+        var v = String(r[h] == null ? '' : r[h]);
+        if (v.indexOf(',') !== -1 || v.indexOf('"') !== -1) v = '"' + v.replace(/"/g, '""') + '"';
+        return v;
+      }).join(','));
+    });
+    sections.push(sLines.join('\n'));
+  }
+  dlText(sections.join('\n'), baseName + '.csv', 'text/csv');
+  showToast('CSV exportado');
+}
+
+function wbExportAsJSON(exp, baseName) {
+  var output = {};
+  if (exp.data) output.datos = exp.data;
+  if (exp.summary) output.resumen = exp.summary;
+  var json = exp.data && !exp.summary ? JSON.stringify(exp.data, null, 2) : JSON.stringify(output, null, 2);
+  dlText(json, baseName + '.json', 'application/json');
+  showToast('JSON exportado');
+}
+
+function wbExportToClipboard(exp) {
+  var rows = exp.summary || exp.data;
+  var headers = exp.summary ? exp.sumHeaders : exp.dataHeaders;
+  if (!rows || !rows.length) { showToast('No hay datos', 'error'); return; }
+
+  var tsv = headers.join('\t') + '\n';
+  rows.forEach(function(r) {
+    tsv += headers.map(function(h) { return String(r[h] == null ? '' : r[h]); }).join('\t') + '\n';
+  });
+
+  navigator.clipboard.writeText(tsv).then(function() {
+    showToast(rows.length + ' filas copiadas. Pegá en Excel/Sheets con Ctrl+V.');
+  }).catch(function() {
+    showToast('Error al copiar', 'error');
+  });
+}
+
+// ──── Send to Chart Creator ────
 function wbSendToChartCreator() {
   if (!WB.lastSummary || WB.lastSummary.length < 2) {
     showToast('Generá un resumen primero', 'error'); return;
   }
-
-  // Remove TOTAL row for charting
   var chartData = WB.lastSummary.filter(function(r) {
     var vals = Object.values(r);
     return vals[0] !== 'TOTAL';
   });
-
-  // Load into main data state
   loadData(chartData, 'Resumen Report Builder');
-
-  // Switch to chart config tab
   switchTab(1);
   showToast('Datos del resumen cargados. Configurá el gráfico.');
 }
@@ -4210,76 +4374,14 @@ function wbSendDataToCharts() {
   var sh = wbGetSheet();
   if (!sh) return;
   var vis = wbVisibleHeaders(sh);
-
-  // Copy only visible columns with display names
   var chartData = WB.filteredRows.map(function(r) {
     var row = {};
     vis.forEach(function(h) { row[wbDisplayName(sh, h)] = r[h]; });
     return row;
   });
-
   loadData(chartData, 'Report Builder: ' + sh.name);
   switchTab(1);
   showToast(chartData.length + ' filas enviadas al creador de gráficos.');
-}
-
-// ──── Export Summary only as XLSX ────
-function wbExportSummaryXLSX() {
-  if (!WB.lastSummary || !WB.lastSummary.length) { showToast('No hay resumen', 'error'); return; }
-  if (typeof XLSX === 'undefined') { showToast('XLSX no disponible', 'error'); return; }
-
-  var wbook = XLSX.utils.book_new();
-  var sumHeaders = Object.keys(WB.lastSummary[0]);
-  var sumData = [sumHeaders];
-  WB.lastSummary.forEach(function(r, i) {
-    sumData.push(sumHeaders.map(function(h) {
-      var v = r[h];
-      // Convert % strings to decimal for Excel
-      if (typeof v === 'string' && v.indexOf('%') !== -1) {
-        var n = parseFloat(v);
-        if (!isNaN(n)) return n / 100;
-      }
-      return v == null ? '' : v;
-    }));
-  });
-
-  var ws = XLSX.utils.aoa_to_sheet(sumData);
-  ws['!cols'] = sumHeaders.map(function(h) { return { wch: Math.max(h.length + 2, 18) }; });
-
-  // Header styling
-  sumHeaders.forEach(function(h, ci) {
-    var ref = XLSX.utils.encode_cell({ r: 0, c: ci });
-    if (ws[ref]) ws[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '4A1D96' } } };
-  });
-
-  // Format % column and color
-  var pctColIdx = sumHeaders.indexOf('% Contactadas');
-  if (pctColIdx !== -1) {
-    for (var row = 1; row <= WB.lastSummary.length; row++) {
-      var ref = XLSX.utils.encode_cell({ r: row, c: pctColIdx });
-      if (ws[ref]) {
-        ws[ref].z = '0.0%';
-        var pv = typeof ws[ref].v === 'number' ? ws[ref].v * 100 : parseFloat(ws[ref].v);
-        if (pv < 50) ws[ref].s = { font: { color: { rgb: 'FF0000' }, bold: true }, fill: { fgColor: { rgb: 'FFCCCC' } } };
-        else if (pv < 80) ws[ref].s = { font: { color: { rgb: 'CC7700' }, bold: true }, fill: { fgColor: { rgb: 'FFF3CD' } } };
-        else ws[ref].s = { font: { color: { rgb: '006600' }, bold: true }, fill: { fgColor: { rgb: 'D4EDDA' } } };
-      }
-    }
-  }
-
-  // TOTAL row bold
-  var lastRow = WB.lastSummary.length;
-  sumHeaders.forEach(function(h, ci) {
-    var ref = XLSX.utils.encode_cell({ r: lastRow, c: ci });
-    if (ws[ref]) {
-      var existing = ws[ref].s || {};
-      ws[ref].s = Object.assign({}, existing, { font: Object.assign({}, existing.font || {}, { bold: true }), fill: { fgColor: { rgb: 'E8E0F0' } } });
-    }
-  });
-
-  XLSX.utils.book_append_sheet(wbook, ws, 'Resumen CSM');
-  XLSX.writeFile(wbook, 'resumen-csm.xlsx');
-  showToast('Resumen exportado a XLSX');
 }
 
 </script>
