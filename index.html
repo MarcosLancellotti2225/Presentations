@@ -225,13 +225,16 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
     <p>Datos a gráficos</p>
   </div>
   <nav class="sidebar-nav">
-    <button class="tab-btn active" onclick="switchTab(0)"><span class="ico">📁</span> <span>Datos</span></button>
+    <span style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);padding:4px 16px;display:block">Datos</span>
+    <button class="tab-btn active" onclick="switchTab(0)"><span class="ico">📁</span> <span>Cargar</span></button>
+    <button class="tab-btn" onclick="switchTab(6)"><span class="ico">📋</span> <span>Report Builder</span></button>
+    <span style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);padding:8px 16px 4px;display:block">Gráficos</span>
     <button class="tab-btn" onclick="switchTab(1)"><span class="ico">⚙</span> <span>Configurar</span></button>
     <button class="tab-btn" onclick="switchTab(2)"><span class="ico">📊</span> <span>Gráficos</span></button>
     <button class="tab-btn" onclick="switchTab(3)"><span class="ico">🖼</span> <span>Dashboard</span></button>
     <button class="tab-btn" onclick="switchTab(4)"><span class="ico">💾</span> <span>Exportar</span></button>
-    <button class="tab-btn" onclick="switchTab(5)"><span class="ico">🔑</span> <span>Portal</span></button>
-    <button class="tab-btn" onclick="switchTab(6)"><span class="ico">🔧</span> <span>Workbench</span></button>
+    <span style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);padding:8px 16px 4px;display:block">Portal</span>
+    <button class="tab-btn" onclick="switchTab(5)"><span class="ico">🔑</span> <span>Signaturit</span></button>
   </nav>
 </aside>
 
@@ -598,17 +601,19 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
   </div>
 </div>
 
-<!-- TAB 6: WORKBENCH -->
+<!-- TAB 6: REPORT BUILDER -->
 <div class="tab-content" id="tab-6">
-  <h2 class="section-title">Workbench</h2>
-  <p class="section-desc">Cargá reportes de Salesforce, combiná hojas, agrupá por columnas, filtrá por fecha y generá resúmenes.</p>
+  <h2 class="section-title">Report Builder</h2>
+  <p class="section-desc">Cargá datos, combiná hojas, agrupá, filtrá y generá reportes visuales.</p>
 
   <!-- Upload area -->
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-primary btn-sm" onclick="document.getElementById('wb-file-input').click()">+ Cargar Excel/CSV</button>
-      <input type="file" id="wb-file-input" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="wbHandleFiles(event)">
-      <span style="color:var(--text-dim);font-size:12px">Se detectan automáticamente headers de Salesforce</span>
+      <button class="btn btn-primary btn-sm" onclick="document.getElementById('wb-file-input').click()">+ Cargar archivo</button>
+      <input type="file" id="wb-file-input" accept=".xlsx,.xls,.csv,.tsv,.json" multiple style="display:none" onchange="wbHandleFiles(event)">
+      <button class="btn btn-secondary btn-sm" onclick="wbOpenPasteModal()">Pegar datos</button>
+      <button class="btn btn-secondary btn-sm" onclick="wbImportFromDataTab()">Importar de Datos</button>
+      <span style="color:var(--text-dim);font-size:12px">Excel, CSV, TSV, JSON | Auto-detecta headers de Salesforce</span>
     </div>
   </div>
 
@@ -634,6 +639,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
       <button class="btn btn-secondary btn-sm" onclick="wbOpenMatchPanel()">Cruzar hojas</button>
       <button class="btn btn-success btn-sm" onclick="wbBuildSummary()">Reporte Resumen</button>
       <button class="btn btn-success btn-sm" onclick="wbExportXLSX()">Exportar XLSX</button>
+      <button class="btn btn-primary btn-sm" onclick="wbSendDataToCharts()">Graficar datos</button>
     </div>
   </div>
 
@@ -661,8 +667,8 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
 
   <!-- Empty state -->
   <div id="wb-empty" class="empty-state">
-    <div class="empty-icon">🔧</div>
-    <p>Cargá reportes de Salesforce (.xlsx, .csv) para empezar a trabajar.</p>
+    <div class="empty-icon">📋</div>
+    <p>Cargá archivos (Excel, CSV, JSON) o pegá datos para empezar.</p>
   </div>
 </div>
 
@@ -723,7 +729,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // TABS & TOAST
 // ═══════════════════════════════
 function switchTab(idx) {
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', i===idx));
+  document.querySelectorAll('.tab-btn').forEach(function(b) {
+    // Extract tab index from onclick attribute
+    var m = b.getAttribute('onclick');
+    var tabIdx = m ? parseInt(m.replace(/[^0-9]/g, '')) : -1;
+    b.classList.toggle('active', tabIdx === idx);
+  });
   document.querySelectorAll('.tab-content').forEach((c,i) => c.classList.toggle('active', i===idx));
   if (idx===1) refreshConfigPanel();
   if (idx===2) renderChartsList();
@@ -3073,27 +3084,19 @@ function wbHandleFiles(event) {
 function wbLoadFile(file) {
   var ext = file.name.split('.').pop().toLowerCase();
 
-  if (ext === 'csv') {
+  if (ext === 'json') {
     file.text().then(function(txt) {
-      var sep = txt.indexOf(';') !== -1 && txt.indexOf(',') === -1 ? ';' : (txt.split(';').length > txt.split(',').length ? ';' : ',');
-      var lines = txt.trim().split('\n');
-      var startRow = 0;
-      for (var i = 0; i < Math.min(lines.length, 10); i++) {
-        if (/filtered|show:|as of |generated by/i.test(lines[i]) || lines[i].trim().split(sep).filter(function(c){return c.trim()}).length <= 1) {
-          startRow = i + 1;
-        } else break;
-      }
-      var headerLine = lines[startRow];
-      var headers = headerLine.split(sep).map(function(h) { return h.trim().replace(/^"|"$/g, ''); });
-      var data = [];
-      for (var j = startRow + 1; j < lines.length; j++) {
-        if (!lines[j].trim()) continue;
-        var vals = lines[j].split(sep).map(function(v) { return v.trim().replace(/^"|"$/g, ''); });
-        var obj = {};
-        headers.forEach(function(h, ci) { obj[h] = vals[ci] || ''; });
-        data.push(obj);
-      }
-      wbAddSheet(file.name, headers, data);
+      try {
+        var parsed = JSON.parse(txt);
+        if (!Array.isArray(parsed)) parsed = [parsed];
+        if (!parsed.length) { showToast('JSON vacío', 'error'); return; }
+        var headers = Object.keys(parsed[0]);
+        wbAddSheet(file.name, headers, parsed);
+      } catch(e) { showToast('Error JSON: ' + e.message, 'error'); }
+    });
+  } else if (ext === 'csv' || ext === 'tsv') {
+    file.text().then(function(txt) {
+      wbParseTextData(txt, file.name, ext === 'tsv' ? '\t' : null);
     });
   } else {
     var reader = new FileReader();
@@ -3105,6 +3108,81 @@ function wbLoadFile(file) {
     };
     reader.readAsArrayBuffer(file);
   }
+}
+
+function wbParseTextData(txt, name, forceSep) {
+  var sep = forceSep || (txt.indexOf(';') !== -1 && txt.indexOf(',') === -1 ? ';' : (txt.split(';').length > txt.split(',').length ? ';' : (txt.indexOf('\t') !== -1 ? '\t' : ',')));
+  var lines = txt.trim().split('\n');
+  var startRow = 0;
+  for (var i = 0; i < Math.min(lines.length, 10); i++) {
+    if (/filtered|show:|as of |generated by/i.test(lines[i]) || lines[i].trim().split(sep).filter(function(c){return c.trim()}).length <= 1) {
+      startRow = i + 1;
+    } else break;
+  }
+  var headerLine = lines[startRow];
+  var headers = headerLine.split(sep).map(function(h) { return h.trim().replace(/^"|"$/g, ''); });
+  var data = [];
+  for (var j = startRow + 1; j < lines.length; j++) {
+    if (!lines[j].trim()) continue;
+    var vals = lines[j].split(sep).map(function(v) { return v.trim().replace(/^"|"$/g, ''); });
+    var obj = {};
+    headers.forEach(function(h, ci) { obj[h] = vals[ci] || ''; });
+    data.push(obj);
+  }
+  wbAddSheet(name, headers, data);
+}
+
+// Paste data modal
+function wbOpenPasteModal() {
+  var container = document.getElementById('token-modal-container');
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:600px">' +
+    '<h3>Pegar datos</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Pegá datos tabulados (desde Excel, Google Sheets, CSV, etc). La primera fila se usa como headers.</p>' +
+    '<textarea id="wb-paste-area" rows="12" style="width:100%;font-family:monospace;font-size:11px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;resize:vertical" placeholder="Pegá datos acá (Ctrl+V)..."></textarea>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">' +
+    '<input type="text" id="wb-paste-name" value="Datos pegados" style="flex:1;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);font-size:12px" placeholder="Nombre de la hoja">' +
+    '</div>' +
+    '<div class="btn-group" style="margin-top:12px">' +
+    '<button class="btn btn-primary" onclick="wbParsePastedData()">Cargar</button>' +
+    '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button>' +
+    '</div></div></div>';
+  container.innerHTML = html;
+  setTimeout(function() { document.getElementById('wb-paste-area').focus(); }, 100);
+}
+
+function wbParsePastedData() {
+  var txt = document.getElementById('wb-paste-area').value.trim();
+  var name = document.getElementById('wb-paste-name').value.trim() || 'Datos pegados';
+  if (!txt) { showToast('No hay datos para cargar', 'error'); return; }
+
+  closeReportModal();
+
+  // Try JSON first
+  if (txt.charAt(0) === '[' || txt.charAt(0) === '{') {
+    try {
+      var parsed = JSON.parse(txt);
+      if (!Array.isArray(parsed)) parsed = [parsed];
+      if (parsed.length) {
+        wbAddSheet(name, Object.keys(parsed[0]), parsed);
+        return;
+      }
+    } catch(e) { /* not JSON, continue */ }
+  }
+
+  // Parse as delimited text
+  wbParseTextData(txt, name, null);
+}
+
+// Import from Data tab (tab 0)
+function wbImportFromDataTab() {
+  if (!S.rawData || !S.rawData.length) { showToast('No hay datos en la pestaña Datos', 'error'); return; }
+  var name = S.files.length ? S.files[0].name : 'Datos importados';
+  wbAddSheet(name, S.headers.slice(), S.rawData.map(function(r) {
+    var copy = {};
+    S.headers.forEach(function(h) { copy[h] = r[h]; });
+    return copy;
+  }));
 }
 
 function wbAddSheet(name, headers, data) {
@@ -4118,11 +4196,31 @@ function wbSendToChartCreator() {
   });
 
   // Load into main data state
-  loadData(chartData, 'Resumen Workbench');
+  loadData(chartData, 'Resumen Report Builder');
 
   // Switch to chart config tab
   switchTab(1);
   showToast('Datos del resumen cargados. Configurá el gráfico.');
+}
+
+function wbSendDataToCharts() {
+  if (!WB.filteredRows || !WB.filteredRows.length) {
+    showToast('No hay datos filtrados', 'error'); return;
+  }
+  var sh = wbGetSheet();
+  if (!sh) return;
+  var vis = wbVisibleHeaders(sh);
+
+  // Copy only visible columns with display names
+  var chartData = WB.filteredRows.map(function(r) {
+    var row = {};
+    vis.forEach(function(h) { row[wbDisplayName(sh, h)] = r[h]; });
+    return row;
+  });
+
+  loadData(chartData, 'Report Builder: ' + sh.name);
+  switchTab(1);
+  showToast(chartData.length + ' filas enviadas al creador de gráficos.');
 }
 
 // ──── Export Summary only as XLSX ────
