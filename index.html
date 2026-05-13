@@ -637,9 +637,11 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
       <input type="date" id="wb-date-to" style="padding:5px 8px;font-size:12px;border-radius:6px;background:var(--bg-card);color:var(--text);border:1px solid var(--border)" onchange="wbApplyFilters()" title="Hasta">
       <button class="btn btn-secondary btn-sm" onclick="wbClearFilters()">Limpiar filtros</button>
       <button class="btn btn-secondary btn-sm" onclick="wbOpenMatchPanel()">Cruzar hojas</button>
+      <button class="btn btn-secondary btn-sm" onclick="wbOpenRowFilter()">Filtrar filas</button>
       <button class="btn btn-success btn-sm" onclick="wbBuildSummary()">Reporte Resumen</button>
       <button class="btn btn-success btn-sm" onclick="wbOpenExportModal()">Exportar</button>
       <button class="btn btn-primary btn-sm" onclick="wbSendDataToCharts()">Graficar datos</button>
+      <button class="btn btn-danger btn-sm" id="wb-undo-btn" onclick="wbUndo()" style="display:none" title="Ctrl+Z">↩ Deshacer</button>
     </div>
   </div>
 
@@ -657,6 +659,7 @@ label{font-size:11px;color:var(--text-dim);font-weight:700;text-transform:upperc
   <div id="wb-summary-output" style="display:none;margin-top:16px">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
       <h3 style="font-size:16px;font-weight:700;margin:0">Reporte Resumen</h3>
+      <button class="btn btn-secondary btn-sm" onclick="wbOpenSummaryColEditor()">Editar columnas</button>
       <button class="btn btn-primary btn-sm" onclick="wbSendToChartCreator()">Crear Gráfico</button>
       <button class="btn btn-success btn-sm" onclick="wbOpenExportModal()">Exportar</button>
     </div>
@@ -2986,7 +2989,8 @@ var WB = {
   dateCol: '',         // auto-detected date column
   dateFrom: '',
   dateTo: '',
-  lastSummary: null
+  lastSummary: null,
+  summaryVisibleCols: null
 };
 
 // ──── Smart Salesforce Excel Parser ────
@@ -3194,7 +3198,8 @@ function wbAddSheet(name, headers, data) {
     headers: headers.slice(),
     allHeaders: headers.slice(),
     hiddenCols: {},
-    colRenames: {}
+    colRenames: {},
+    history: []
   });
   WB.activeSheet = WB.sheets.length - 1;
   showToast(name + ': ' + data.length + ' filas, ' + headers.length + ' columnas');
@@ -3214,6 +3219,7 @@ function wbRefresh() {
   wbRenderSheetTabs();
   wbPopulateToolbar();
   wbApplyFilters();
+  wbUpdateUndoBtn();
 }
 
 function wbRenderSheetTabs() {
@@ -3550,6 +3556,7 @@ function wbRenameCol(col, newName) {
 function wbDeleteCol(col) {
   var sh = wbGetSheet();
   if (!sh) return;
+  wbPushUndo(sh);
   sh.allHeaders = sh.allHeaders.filter(function(h) { return h !== col; });
   sh.headers = sh.headers.filter(function(h) { return h !== col; });
   delete sh.hiddenCols[col];
@@ -3659,6 +3666,8 @@ function wbExecuteFillDown() {
 
   if (!cols.length) { showToast('Seleccioná al menos una columna', 'error'); return; }
 
+  wbPushUndo(sh);
+
   var preview = document.getElementById('wb-fill-preview').checked;
   var totalFilled = 0;
   var changes = []; // for preview
@@ -3719,6 +3728,8 @@ function wbExecuteMapLookup() {
 
   if (!targetCol || !sourceCol) { showToast('Seleccioná ambas columnas', 'error'); return; }
   if (targetCol === sourceCol) { showToast('Las columnas deben ser diferentes', 'error'); return; }
+
+  wbPushUndo(sh);
 
   var filled = 0;
   var changes = [];
@@ -3900,6 +3911,7 @@ function wbUpdateMatchCols() {
 
 function wbExecuteMatch() {
   var sh = wbGetSheet();
+  wbPushUndo(sh);
   var sheetIdx = parseInt(document.getElementById('wb-match-sheet').value);
   var targetSh = WB.sheets[sheetIdx];
   var key1 = document.getElementById('wb-match-key1').value;
@@ -4100,37 +4112,11 @@ function wbGenerateSummary() {
   totalRow['Filas'] = rows.length;
   summaryRows.push(totalRow);
 
-  // Render
-  var sumHeaders = Object.keys(summaryRows[0]);
-  var html = '<thead><tr>';
-  sumHeaders.forEach(function(h) { html += '<th>' + esc(h) + '</th>'; });
-  html += '</tr></thead><tbody>';
-  summaryRows.forEach(function(r, i) {
-    var isTotal = i === summaryRows.length - 1;
-    var style = isTotal ? ' style="font-weight:700;background:rgba(124,58,237,.15)"' : '';
-
-    var pctVal = contactCol ? parseFloat(r['% Contactadas']) : 100;
-    if (!isTotal && contactCol && pctVal < 50) style = ' style="background:rgba(239,68,68,.1)"';
-
-    html += '<tr' + style + '>';
-    sumHeaders.forEach(function(h) {
-      var val = r[h] == null ? '' : r[h];
-      var cellStyle = '';
-      if (h === '% Contactadas') {
-        var pv2 = parseFloat(val);
-        if (pv2 >= 80) cellStyle = ' style="color:#22c55e;font-weight:700"';
-        else if (pv2 >= 50) cellStyle = ' style="color:#f59e0b;font-weight:600"';
-        else cellStyle = ' style="color:#ef4444;font-weight:700"';
-      }
-      html += '<td' + cellStyle + '>' + esc(String(val)) + '</td>';
-    });
-    html += '</tr>';
-  });
-  html += '</tbody>';
-
-  document.getElementById('wb-summary-table').innerHTML = html;
-  document.getElementById('wb-summary-output').style.display = 'block';
+  // Store and render
   WB.lastSummary = summaryRows;
+  WB.summaryVisibleCols = Object.keys(summaryRows[0]);
+  document.getElementById('wb-summary-output').style.display = 'block';
+  wbRenderSummaryTable();
   showToast('Resumen: ' + groupOrder.length + ' grupos');
 }
 
@@ -4207,8 +4193,13 @@ function wbGetExportData() {
     });
   }
   if ((mode === 'summary' || mode === 'both') && WB.lastSummary) {
-    result.sumHeaders = Object.keys(WB.lastSummary[0]);
-    result.summary = WB.lastSummary;
+    var visSumCols = WB.summaryVisibleCols || Object.keys(WB.lastSummary[0]);
+    result.sumHeaders = visSumCols;
+    result.summary = WB.lastSummary.map(function(r) {
+      var nr = {};
+      visSumCols.forEach(function(c) { nr[c] = r[c]; });
+      return nr;
+    });
   }
   return result;
 }
@@ -4358,9 +4349,14 @@ function wbSendToChartCreator() {
   if (!WB.lastSummary || WB.lastSummary.length < 2) {
     showToast('Generá un resumen primero', 'error'); return;
   }
+  var visSumCols = WB.summaryVisibleCols || Object.keys(WB.lastSummary[0]);
   var chartData = WB.lastSummary.filter(function(r) {
     var vals = Object.values(r);
     return vals[0] !== 'TOTAL';
+  }).map(function(r) {
+    var nr = {};
+    visSumCols.forEach(function(c) { nr[c] = r[c]; });
+    return nr;
   });
   loadData(chartData, 'Resumen Report Builder');
   switchTab(1);
@@ -4382,6 +4378,257 @@ function wbSendDataToCharts() {
   loadData(chartData, 'Report Builder: ' + sh.name);
   switchTab(1);
   showToast(chartData.length + ' filas enviadas al creador de gráficos.');
+}
+
+// ──── Undo System ────
+var WB_MAX_HISTORY = 20;
+
+function wbPushUndo(sh) {
+  if (!sh) return;
+  if (!sh.history) sh.history = [];
+  var snapshot = {
+    rows: JSON.parse(JSON.stringify(sh.rows)),
+    headers: sh.headers.slice(),
+    allHeaders: sh.allHeaders.slice(),
+    hiddenCols: JSON.parse(JSON.stringify(sh.hiddenCols)),
+    colRenames: JSON.parse(JSON.stringify(sh.colRenames))
+  };
+  sh.history.push(snapshot);
+  if (sh.history.length > WB_MAX_HISTORY) sh.history.shift();
+  wbUpdateUndoBtn();
+}
+
+function wbUndo() {
+  var sh = wbGetSheet();
+  if (!sh || !sh.history || !sh.history.length) { showToast('Nada que deshacer', 'error'); return; }
+  var snap = sh.history.pop();
+  sh.rows = snap.rows;
+  sh.headers = snap.headers;
+  sh.allHeaders = snap.allHeaders;
+  sh.hiddenCols = snap.hiddenCols;
+  sh.colRenames = snap.colRenames;
+  wbUpdateUndoBtn();
+  wbRefresh();
+  showToast('Cambio deshecho (' + sh.history.length + ' restantes)');
+}
+
+function wbUpdateUndoBtn() {
+  var btn = document.getElementById('wb-undo-btn');
+  if (!btn) return;
+  var sh = wbGetSheet();
+  var count = (sh && sh.history) ? sh.history.length : 0;
+  btn.style.display = count > 0 ? 'inline-flex' : 'none';
+  btn.textContent = '↩ Deshacer' + (count > 0 ? ' (' + count + ')' : '');
+}
+
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    var tab6 = document.getElementById('tab-6');
+    if (tab6 && tab6.classList.contains('active')) {
+      e.preventDefault();
+      wbUndo();
+    }
+  }
+});
+
+// ──── Row Filter (delete rows where col A ≠ col B) ────
+function wbOpenRowFilter() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  var vis = wbVisibleHeaders(sh);
+  var container = document.getElementById('token-modal-container');
+
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:500px">' +
+    '<h3>Filtrar filas por coincidencia</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Eliminá filas donde dos columnas no coinciden (o coinciden). Ej: eliminar filas donde "Customer Success Manager" ≠ "Owner Name".</p>' +
+    '<div style="display:flex;gap:12px;align-items:end;margin-bottom:12px">' +
+    '<div style="flex:1"><label style="font-size:11px;font-weight:600;margin-bottom:4px;display:block">Columna A</label>' +
+    '<select id="wb-rf-colA" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    vis.map(function(h) {
+      var sel = /customer success/i.test(h) ? ' selected' : '';
+      return '<option value="' + h + '"' + sel + '>' + esc(wbDisplayName(sh, h)) + '</option>';
+    }).join('') +
+    '</select></div>' +
+    '<div style="flex:1"><label style="font-size:11px;font-weight:600;margin-bottom:4px;display:block">Columna B</label>' +
+    '<select id="wb-rf-colB" style="width:100%;padding:6px;border-radius:6px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">' +
+    vis.map(function(h) {
+      var sel = /owner.*name/i.test(h) ? ' selected' : '';
+      return '<option value="' + h + '"' + sel + '>' + esc(wbDisplayName(sh, h)) + '</option>';
+    }).join('') +
+    '</select></div></div>' +
+    '<div style="margin-bottom:12px">' +
+    '<label style="font-size:12px;cursor:pointer;display:block;margin-bottom:4px"><input type="radio" name="wb-rf-mode" value="neq" checked> Eliminar filas donde A <b>≠</b> B (mantener solo coincidencias)</label>' +
+    '<label style="font-size:12px;cursor:pointer;display:block"><input type="radio" name="wb-rf-mode" value="eq"> Eliminar filas donde A <b>=</b> B (mantener solo diferencias)</label>' +
+    '</div>' +
+    '<div style="margin-bottom:12px;padding:8px;background:rgba(124,58,237,.08);border-radius:8px">' +
+    '<label style="font-size:11px;cursor:pointer"><input type="checkbox" id="wb-rf-ignore-case" checked> Ignorar mayúsculas/minúsculas</label>' +
+    '<label style="font-size:11px;cursor:pointer;margin-left:12px"><input type="checkbox" id="wb-rf-ignore-empty"> Ignorar filas vacías (no eliminar si alguna está vacía)</label>' +
+    '</div>' +
+    '<button class="btn btn-warning btn-sm" onclick="wbPreviewRowFilter()" style="margin-bottom:8px">Vista previa</button>' +
+    '<div id="wb-rf-preview" style="margin-bottom:12px"></div>' +
+    '<div class="btn-group">' +
+    '<button class="btn btn-danger" onclick="wbExecuteRowFilter()">Eliminar filas</button>' +
+    '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button>' +
+    '</div></div></div>';
+
+  container.innerHTML = html;
+}
+
+function wbGetRowFilterParams() {
+  var colA = document.getElementById('wb-rf-colA').value;
+  var colB = document.getElementById('wb-rf-colB').value;
+  var mode = document.querySelector('input[name="wb-rf-mode"]:checked').value;
+  var ignoreCase = document.getElementById('wb-rf-ignore-case').checked;
+  var ignoreEmpty = document.getElementById('wb-rf-ignore-empty').checked;
+  return { colA: colA, colB: colB, mode: mode, ignoreCase: ignoreCase, ignoreEmpty: ignoreEmpty };
+}
+
+function wbPreviewRowFilter() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  var p = wbGetRowFilterParams();
+  if (p.colA === p.colB) { showToast('Seleccioná columnas diferentes', 'error'); return; }
+
+  var toDelete = 0;
+  var toKeep = 0;
+  var examples = [];
+  sh.rows.forEach(function(r, i) {
+    var a = String(r[p.colA] || '').trim();
+    var b = String(r[p.colB] || '').trim();
+    if (p.ignoreEmpty && (a === '' || b === '')) { toKeep++; return; }
+    var match = p.ignoreCase ? a.toLowerCase() === b.toLowerCase() : a === b;
+    var willDelete = (p.mode === 'neq') ? !match : match;
+    if (willDelete) {
+      toDelete++;
+      if (examples.length < 5) examples.push({ row: i + 1, a: a || '(vacío)', b: b || '(vacío)' });
+    } else {
+      toKeep++;
+    }
+  });
+
+  var previewDiv = document.getElementById('wb-rf-preview');
+  var html = '<div style="padding:10px;border-radius:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)">' +
+    '<p style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:4px">' + toDelete + ' filas se eliminarán</p>' +
+    '<p style="font-size:12px;color:var(--text-dim)">' + toKeep + ' filas se mantienen</p>';
+  if (examples.length > 0) {
+    html += '<table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>Fila</th><th>' + esc(p.colA) + '</th><th>' + esc(p.colB) + '</th></tr></thead><tbody>';
+    examples.forEach(function(ex) {
+      html += '<tr><td>' + ex.row + '</td><td>' + esc(ex.a) + '</td><td style="color:#ef4444">' + esc(ex.b) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+  html += '</div>';
+  previewDiv.innerHTML = html;
+}
+
+function wbExecuteRowFilter() {
+  var sh = wbGetSheet();
+  if (!sh) return;
+  var p = wbGetRowFilterParams();
+  if (p.colA === p.colB) { showToast('Seleccioná columnas diferentes', 'error'); return; }
+
+  wbPushUndo(sh);
+
+  var before = sh.rows.length;
+  sh.rows = sh.rows.filter(function(r) {
+    var a = String(r[p.colA] || '').trim();
+    var b = String(r[p.colB] || '').trim();
+    if (p.ignoreEmpty && (a === '' || b === '')) return true;
+    var match = p.ignoreCase ? a.toLowerCase() === b.toLowerCase() : a === b;
+    return (p.mode === 'neq') ? match : !match;
+  });
+  var deleted = before - sh.rows.length;
+
+  closeReportModal();
+  wbRefresh();
+  showToast(deleted + ' filas eliminadas. Quedan ' + sh.rows.length + ' filas. Podés deshacer con Ctrl+Z.');
+}
+
+// ──── Summary Column Editor ────
+function wbOpenSummaryColEditor() {
+  if (!WB.lastSummary || !WB.lastSummary.length) { showToast('Generá un resumen primero', 'error'); return; }
+  var allCols = Object.keys(WB.lastSummary[0]);
+  if (!WB.summaryVisibleCols) WB.summaryVisibleCols = allCols.slice();
+  var container = document.getElementById('token-modal-container');
+
+  var html = '<div class="portal-modal-overlay" onclick="if(event.target===this)closeReportModal()">' +
+    '<div class="portal-modal" style="max-width:450px">' +
+    '<h3>Columnas del resumen</h3>' +
+    '<p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Seleccioná qué columnas mostrar en el reporte y en la exportación.</p>' +
+    '<div style="max-height:350px;overflow-y:auto">';
+
+  allCols.forEach(function(col) {
+    var checked = WB.summaryVisibleCols.indexOf(col) !== -1 ? ' checked' : '';
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">' +
+      '<label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;flex:1">' +
+      '<input type="checkbox" class="wb-sumcol-check" value="' + esc(col) + '"' + checked + '>' +
+      '<span style="font-size:13px;font-weight:500">' + esc(col) + '</span>' +
+      '</label>' +
+      '<span style="font-size:11px;color:var(--text-dim)">' + esc(String(WB.lastSummary[0][col] || '')) + '</span>' +
+      '</div>';
+  });
+
+  html += '</div><div class="btn-group" style="margin-top:12px">' +
+    '<button class="btn btn-primary" onclick="wbApplySummaryColEdit()">Aplicar</button>' +
+    '<button class="btn btn-secondary" onclick="closeReportModal()">Cancelar</button>' +
+    '</div></div></div>';
+
+  container.innerHTML = html;
+}
+
+function wbApplySummaryColEdit() {
+  var checks = document.querySelectorAll('.wb-sumcol-check');
+  var visible = [];
+  checks.forEach(function(cb) { if (cb.checked) visible.push(cb.value); });
+  if (!visible.length) { showToast('Seleccioná al menos una columna', 'error'); return; }
+  WB.summaryVisibleCols = visible;
+  closeReportModal();
+  wbRenderSummaryTable();
+  showToast(visible.length + ' columnas visibles en el resumen');
+}
+
+function wbRenderSummaryTable() {
+  if (!WB.lastSummary || !WB.lastSummary.length) return;
+  var allCols = Object.keys(WB.lastSummary[0]);
+  var visCols = WB.summaryVisibleCols || allCols;
+  var sh = wbGetSheet();
+  var contactCol = visCols.indexOf('% Contactadas') !== -1;
+
+  var html = '<thead><tr>';
+  visCols.forEach(function(h) { html += '<th>' + esc(h) + '</th>'; });
+  html += '</tr></thead><tbody>';
+
+  WB.lastSummary.forEach(function(r, i) {
+    var isTotal = i === WB.lastSummary.length - 1;
+    var style = isTotal ? ' style="font-weight:700;background:rgba(124,58,237,.15)"' : '';
+    var pctVal = contactCol ? parseFloat(r['% Contactadas']) : 100;
+    if (!isTotal && contactCol && pctVal < 50) style = ' style="background:rgba(239,68,68,.1)"';
+
+    html += '<tr' + style + '>';
+    visCols.forEach(function(h) {
+      var val = r[h] == null ? '' : r[h];
+      var cellStyle = '';
+      if (h === '% Contactadas') {
+        var pv2 = parseFloat(val);
+        if (pv2 >= 80) cellStyle = ' style="color:#22c55e;font-weight:700"';
+        else if (pv2 >= 50) cellStyle = ' style="color:#f59e0b;font-weight:600"';
+        else cellStyle = ' style="color:#ef4444;font-weight:700"';
+      }
+      html += '<td' + cellStyle + '>' + esc(String(val)) + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+
+  document.getElementById('wb-summary-table').innerHTML = html;
+
+  var filteredSummary = WB.lastSummary.map(function(r) {
+    var nr = {};
+    visCols.forEach(function(c) { nr[c] = r[c]; });
+    return nr;
+  });
+  WB._exportableSummary = filteredSummary;
 }
 
 </script>
